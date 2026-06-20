@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.QuizQuestionMapper">
+
+    <resultMap type="QuizQuestion" id="QuizQuestionResult">
+        <id     property="id"              column="id"               />
+        <result property="questionType"    column="question_type"    />
+        <result property="stem"            column="stem"             />
+        <result property="options"         column="options"          />
+        <result property="answer"          column="answer"           />
+        <result property="explanation"     column="explanation"      />
+        <result property="difficulty"      column="difficulty"       />
+        <result property="knowledgePoints" column="knowledge_points" />
+        <result property="source"          column="source"           />
+        <result property="correctRate"     column="correct_rate"     />
+        <result property="status"          column="status"           />
+        <result property="createBy"        column="create_by"        />
+        <result property="createTime"      column="create_time"      />
+        <result property="updateTime"      column="update_time"      />
+    </resultMap>
+
+    <sql id="selectQuestionVo">
+        select id, question_type, stem, options, answer, explanation,
+               difficulty, knowledge_points, source, correct_rate, status,
+               create_by, create_time, update_time
+        from quiz_question
+    </sql>
+
+    <!-- 插入一道题目 -->
+    <insert id="insertQuestion" parameterType="QuizQuestion" useGeneratedKeys="true" keyProperty="id">
+        insert into quiz_question (
+            question_type,
+            stem,
+            <if test="options != null">options,</if>
+            answer,
+            <if test="explanation != null">explanation,</if>
+            difficulty,
+            <if test="knowledgePoints != null">knowledge_points,</if>
+            source,
+            status,
+            create_by,
+            create_time,
+            update_time
+        ) values (
+            #{questionType},
+            #{stem},
+            <if test="options != null">#{options},</if>
+            #{answer},
+            <if test="explanation != null">#{explanation},</if>
+            #{difficulty},
+            <if test="knowledgePoints != null">#{knowledgePoints},</if>
+            #{source},
+            #{status},
+            #{createBy},
+            sysdate(),
+            sysdate()
+        )
+    </insert>
+
+    <!-- 按难度查询题目（状态启用） -->
+    <select id="selectByDifficulty" resultMap="QuizQuestionResult">
+        <include refid="selectQuestionVo"/>
+        where status = '0'
+        <if test="difficulty != null and difficulty != ''">
+            and difficulty = #{difficulty}
+        </if>
+        order by create_time desc
+        limit #{limit}
+    </select>
+
+    <!-- 按 ID 查询 -->
+    <select id="selectQuestionById" parameterType="Long" resultMap="QuizQuestionResult">
+        <include refid="selectQuestionVo"/>
+        where id = #{id}
+    </select>
+
+    <!-- 更新题目正确率 -->
+    <update id="updateCorrectRate">
+        update quiz_question
+        set correct_rate = #{correctRate},
+            update_time = sysdate()
+        where id = #{id}
+    </update>
+
+</mapper>

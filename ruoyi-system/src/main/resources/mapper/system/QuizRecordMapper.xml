@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.QuizRecordMapper">
+    <resultMap type="QuizRecord" id="QuizRecordResult">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="questionId" column="question_id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="userAnswer" column="user_answer"/>
+        <result property="isCorrect" column="is_correct"/>
+        <result property="score" column="score"/>
+        <result property="timeSpentSec" column="time_spent_sec"/>
+        <result property="answerTime" column="answer_time"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <insert id="insertRecord" parameterType="QuizRecord" useGeneratedKeys="true" keyProperty="id">
+        insert into quiz_record (user_id, question_id, session_id, user_answer, is_correct, score, time_spent_sec, answer_time, create_time)
+        values (#{userId}, #{questionId}, #{sessionId}, #{userAnswer}, #{isCorrect}, #{score}, #{timeSpentSec}, #{answerTime}, sysdate())
+    </insert>
+
+    <select id="selectByUser" resultMap="QuizRecordResult">
+        select * from quiz_record where user_id = #{userId} order by create_time desc limit #{limit}
+    </select>
+
+    <select id="selectByUserAndQuestion" resultMap="QuizRecordResult">
+        select * from quiz_record where user_id = #{userId} and question_id = #{questionId} order by create_time desc
+    </select>
+
+    <select id="selectStats" resultType="java.util.Map">
+        select count(*) as total,
+               sum(case when is_correct = 1 then 1 else 0 end) as correct,
+               avg(time_spent_sec) as avgTimeSec
+        from quiz_record where user_id = #{userId}
+    </select>
+</mapper>

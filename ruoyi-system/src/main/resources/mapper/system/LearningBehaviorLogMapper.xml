@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.LearningBehaviorLogMapper">
+
+    <resultMap type="com.ruoyi.system.domain.LearningBehaviorLog" id="BehaviorLogResult">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="actionType" column="action_type"/>
+        <result property="targetType" column="target_type"/>
+        <result property="targetId" column="target_id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="durationSec" column="duration_sec"/>
+        <result property="metadataJson" column="metadata_json"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <!-- 插入一条行为记录 -->
+    <insert id="insertLog" parameterType="com.ruoyi.system.domain.LearningBehaviorLog" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO learning_behavior_log
+            (user_id, action_type, target_type, target_id, session_id, duration_sec, metadata_json, create_time)
+        VALUES
+            (#{userId}, #{actionType}, #{targetType}, #{targetId}, #{sessionId}, #{durationSec}, #{metadataJson}, #{createTime})
+    </insert>
+
+    <!-- 查询用户最近 N 条行为记录 -->
+    <select id="selectRecentByUser" resultMap="BehaviorLogResult">
+        SELECT * FROM learning_behavior_log
+        WHERE user_id = #{userId}
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 按天数聚合统计：指定天数内的行为次数和活跃天数 -->
+    <select id="selectStatsByDays" resultType="java.util.Map">
+        SELECT
+            COUNT(*) AS totalCount,
+            COUNT(DISTINCT DATE(create_time)) AS uniqueDates,
+            COALESCE(SUM(COALESCE(duration_sec, 0)), 0) AS totalDurationSec,
+            COALESCE(SUM(CASE WHEN action_type = 'VIEW_RESOURCE' THEN 1 ELSE 0 END), 0) AS viewResourceCount,
+            COALESCE(SUM(CASE WHEN action_type = 'ANSWER_QUIZ' THEN 1 ELSE 0 END), 0) AS answerQuizCount,
+            COALESCE(SUM(CASE WHEN action_type = 'COMPLETE_NODE' THEN 1 ELSE 0 END), 0) AS completeNodeCount,
+            COALESCE(SUM(CASE WHEN action_type = 'CONVERSATION' THEN 1 ELSE 0 END), 0) AS conversationCount
+        FROM learning_behavior_log
+        WHERE user_id = #{userId}
+          AND create_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+    </select>
+
+    <!-- 按行为类型统计分布 -->
+    <select id="selectActionDistribution" resultType="java.util.Map">
+        SELECT
+            action_type AS actionType,
+            COUNT(*) AS cnt
+        FROM learning_behavior_log
+        WHERE user_id = #{userId}
+          AND create_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY action_type
+        ORDER BY cnt DESC
+    </select>
+
+    <!-- 按日期聚合每日学习时长（近似用 duration_sec 字段） -->
+    <select id="selectDailyDuration" resultType="java.util.Map">
+        SELECT
+            DATE(create_time) AS date,
+            COALESCE(SUM(COALESCE(duration_sec, 0)), 0) / 60 AS minutes
+        FROM learning_behavior_log
+        WHERE user_id = #{userId}
+          AND create_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY DATE(create_time)
+        ORDER BY date ASC
+    </select>
+
+    <!-- 查询最近活跃日期列表（供 Java 层计算连续天数，避免纯 SQL 的复杂性） -->
+    <select id="selectConsecutiveDays" resultType="java.lang.String">
+        SELECT DISTINCT DATE(create_time) AS active_date
+        FROM learning_behavior_log
+        WHERE user_id = #{userId}
+          AND create_time >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
+        ORDER BY active_date DESC
+        LIMIT 60
+    </select>
+
+</mapper>

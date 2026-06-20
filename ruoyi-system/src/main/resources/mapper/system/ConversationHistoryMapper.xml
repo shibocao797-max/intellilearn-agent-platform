@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ConversationHistoryMapper">
+
+    <resultMap type="ConversationHistory" id="ConversationHistoryResult">
+        <id     property="id"           column="id"              />
+        <result property="userId"       column="user_id"         />
+        <result property="sessionId"    column="session_id"      />
+        <result property="role"         column="role"            />
+        <result property="content"      column="content"         />
+        <result property="intentType"   column="intent_type"     />
+        <result property="metadataJson" column="metadata_json"   />
+        <result property="createTime"   column="create_time"     />
+    </resultMap>
+
+    <sql id="selectHistoryVo">
+        select id, user_id, session_id, role, content, intent_type, metadata_json, create_time
+        from conversation_history
+    </sql>
+
+    <!-- 插入一条对话记录 -->
+    <insert id="insertHistory" parameterType="ConversationHistory" useGeneratedKeys="true" keyProperty="id">
+        insert into conversation_history (
+            <if test="userId != null">user_id,</if>
+            <if test="sessionId != null">session_id,</if>
+            <if test="role != null">role,</if>
+            <if test="content != null">content,</if>
+            <if test="intentType != null">intent_type,</if>
+            <if test="metadataJson != null">metadata_json,</if>
+            create_time
+        ) values (
+            <if test="userId != null">#{userId},</if>
+            <if test="sessionId != null">#{sessionId},</if>
+            <if test="role != null">#{role},</if>
+            <if test="content != null">#{content},</if>
+            <if test="intentType != null">#{intentType},</if>
+            <if test="metadataJson != null">#{metadataJson},</if>
+            sysdate()
+        )
+    </insert>
+
+    <!-- 查询指定会话的全部消息（按时间升序，带 user_id 隔离） -->
+    <select id="selectBySession" resultMap="ConversationHistoryResult">
+        <include refid="selectHistoryVo"/>
+        where user_id = #{userId}
+          and session_id = #{sessionId}
+        order by create_time asc
+    </select>
+
+    <!-- 聚合查询用户的所有会话列表（按最后活跃时间降序） -->
+    <select id="selectSessionsByUser" parameterType="Long" resultType="java.util.Map">
+        select
+            session_id                                          as sessionId,
+            max(create_time)                                    as lastActiveTime,
+            count(*)                                            as messageCount,
+            substring(
+                min(case when role = 'user' then content end),
+                1, 80
+            )                                                   as title
+        from conversation_history
+        where user_id = #{userId}
+        group by session_id
+        order by lastActiveTime desc
+    </select>
+
+    <!-- 根据用户 ID 查询最近 N 条消息（供画像抽取等场景） -->
+    <select id="selectRecentByUser" resultMap="ConversationHistoryResult">
+        <include refid="selectHistoryVo"/>
+        where user_id = #{userId}
+        order by create_time desc
+        limit #{limit}
+    </select>
+
+    <!-- 软删除会话（物理删除该 session 下所有消息） -->
+    <delete id="softDeleteSession">
+        delete from conversation_history
+        where user_id = #{userId}
+          and session_id = #{sessionId}
+    </delete>
+
+</mapper>

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.LearnerProfileMapper">
+
+    <resultMap type="LearnerProfile" id="LearnerProfileResult">
+        <id     property="id"             column="id"               />
+        <result property="userId"         column="user_id"          />
+        <result property="profileJson"    column="profile_json"     />
+        <result property="version"        column="version"          />
+        <result property="dimensionCount" column="dimension_count"  />
+        <result property="lastExtractAt"  column="last_extract_at"  />
+        <result property="createTime"     column="create_time"      />
+        <result property="updateTime"     column="update_time"      />
+    </resultMap>
+
+    <sql id="selectProfileVo">
+        select id, user_id, profile_json, version, dimension_count,
+               last_extract_at, create_time, update_time
+        from learner_profile
+    </sql>
+
+    <!-- 根据 userId 查询画像（唯一索引，至多一条） -->
+    <select id="selectProfileByUserId" parameterType="Long" resultMap="LearnerProfileResult">
+        <include refid="selectProfileVo"/>
+        where user_id = #{userId}
+    </select>
+
+    <!-- 插入新画像（首次建立） -->
+    <insert id="insertProfile" parameterType="LearnerProfile" useGeneratedKeys="true" keyProperty="id">
+        insert into learner_profile (
+            user_id,
+            profile_json,
+            version,
+            dimension_count,
+            last_extract_at,
+            create_time,
+            update_time
+        ) values (
+            #{userId},
+            #{profileJson},
+            #{version},
+            #{dimensionCount},
+            #{lastExtractAt},
+            sysdate(),
+            sysdate()
+        )
+    </insert>
+
+    <!-- 全量覆盖更新画像（每次画像抽取后调用） -->
+    <update id="updateProfile" parameterType="LearnerProfile">
+        update learner_profile
+        set profile_json = #{profileJson},
+            version = #{version},
+            dimension_count = #{dimensionCount},
+            last_extract_at = #{lastExtractAt},
+            update_time = sysdate()
+        where user_id = #{userId}
+    </update>
+
+    <!-- 按时间倒序查询画像历史版本（最近20条） -->
+    <select id="selectHistoryByUserId" parameterType="Long" resultMap="LearnerProfileResult">
+        <include refid="selectProfileVo"/>
+        where user_id = #{userId}
+        order by update_time desc
+        limit 20
+    </select>
+
+    <!-- 判断用户是否已有画像 -->
+    <select id="existsByUserId" parameterType="Long" resultType="boolean">
+        select count(*) > 0
+        from learner_profile
+        where user_id = #{userId}
+    </select>
+
+</mapper>
