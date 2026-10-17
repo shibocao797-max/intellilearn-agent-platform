@@ -33,7 +33,6 @@ ruoyi-quartz      定时任务
 ruoyi-ui          RuoYi 管理端前端
 edu-ai-vue3       教育 AI 学生端前端
 sql               数据库初始化脚本
-doc               项目文档与交付材料
 ```
 
 ## 快速启动
