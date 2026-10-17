@@ -1,13 +1,19 @@
 package com.ruoyi.system.ai.service;
 
 import com.ruoyi.common.core.redis.RedisCache;
+import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.system.domain.ConversationHistory;
+import com.ruoyi.system.domain.ConversationSession;
 import com.ruoyi.system.mapper.ConversationHistoryMapper;
+import com.ruoyi.system.mapper.ConversationSessionMapper;
 import com.alibaba.fastjson2.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -38,8 +44,15 @@ public class ConversationService {
     /** Redis TTL: 1 天自动过期，单位秒 */
     private static final int REDIS_TTL_SECONDS = 86400;
 
+    private static final int MAX_SESSION_ID_LENGTH = 64;
+
+    private static final int SESSION_ID_CREATE_ATTEMPTS = 5;
+
     @Autowired
     private ConversationHistoryMapper historyMapper;
+
+    @Autowired
+    private ConversationSessionMapper sessionMapper;
 
     @Autowired
     private RedisCache redisCache;
@@ -53,9 +66,27 @@ public class ConversationService {
      * @param content    消息内容
      * @param intentType 意图类型（可为 null）
      */
+    @Transactional(rollbackFor = Exception.class)
     public void saveMessage(Long userId, String sessionId, String role,
                             String content, String intentType) {
         saveMessage(userId, sessionId, role, content, intentType, null);
+    }
+
+    /** Persist only public attachment metadata; storage paths and extracted text never enter history metadata. */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveUserMessageWithAttachments(Long userId, String sessionId, String content,
+                                               List<Map<String, Object>> attachments) {
+        ConversationHistory ch = new ConversationHistory();
+        ch.setUserId(userId);
+        ch.setRole("user");
+        ch.setContent(content == null ? "" : content);
+        if (attachments != null && !attachments.isEmpty()) {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("attachments", attachments);
+            ch.setMetadataJson(JSON.toJSONString(metadata));
+        }
+        ch.setCreateTime(new Date());
+        persistMessage(userId, sessionId, ch);
     }
 
     /**
@@ -64,13 +95,12 @@ public class ConversationService {
      *
      * @param resources 生成的资源列表（仅 assistant 角色需要，user/system 传 null）
      */
+    @Transactional(rollbackFor = Exception.class)
     public void saveMessage(Long userId, String sessionId, String role,
                             String content, String intentType,
                             List<Map<String, Object>> resources) {
-        // ① MySQL 全量持久化
         ConversationHistory ch = new ConversationHistory();
         ch.setUserId(userId);
-        ch.setSessionId(sessionId);
         ch.setRole(role);
         ch.setContent(content);
         ch.setIntentType(intentType);
@@ -85,9 +115,39 @@ public class ConversationService {
         }
 
         ch.setCreateTime(new Date());
-        historyMapper.insertHistory(ch);
+        persistMessage(userId, sessionId, ch);
+    }
 
-        // ② Redis 短期记忆（滚动窗口，保留最近 20 条）
+    private void persistMessage(Long userId, String sessionId, ConversationHistory history) {
+        String normalizedSessionId = requiredSessionId(sessionId);
+        ensureSessionExists(userId, normalizedSessionId);
+        history.setSessionId(normalizedSessionId);
+        historyMapper.insertHistory(history);
+        sessionMapper.updateAfterMessage(userId, normalizedSessionId,
+                history.getRole(), history.getContent());
+        appendRedisMessageAfterCommit(userId, normalizedSessionId,
+                history.getRole(), history.getContent());
+    }
+
+    private void appendRedisMessageAfterCommit(Long userId, String sessionId,
+                                               String role, String content) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            appendRedisMessage(userId, sessionId, role, content);
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            log.warn("Spring transaction is active without synchronization; Redis chat cache update skipped");
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                appendRedisMessage(userId, sessionId, role, content);
+            }
+        });
+    }
+
+    private void appendRedisMessage(Long userId, String sessionId, String role, String content) {
         String redisKey = REDIS_KEY_PREFIX + userId + ":" + sessionId;
         try {
             // 构造消息条目
@@ -128,7 +188,8 @@ public class ConversationService {
      * @return 消息列表（含 resources 字段，从 metadata_json 反序列化）
      */
     public List<Map<String, Object>> getMessages(Long userId, String sessionId) {
-        List<ConversationHistory> list = historyMapper.selectBySession(userId, sessionId);
+        requireUserId(userId);
+        List<ConversationHistory> list = historyMapper.selectBySession(userId, requiredSessionId(sessionId));
         List<Map<String, Object>> result = new ArrayList<>();
         for (ConversationHistory ch : list) {
             Map<String, Object> msg = new LinkedHashMap<>();
@@ -143,7 +204,13 @@ public class ConversationService {
             String metadataJson = ch.getMetadataJson();
             if (metadataJson != null && !metadataJson.isEmpty()) {
                 try {
-                    msg.put("resources", JSON.parseArray(metadataJson));
+                    Object metadata = JSON.parse(metadataJson);
+                    if (metadata instanceof com.alibaba.fastjson2.JSONObject object && object.containsKey("attachments")) {
+                        msg.put("attachments", object.getJSONArray("attachments"));
+                        msg.put("resources", List.of());
+                    } else {
+                        msg.put("resources", JSON.parseArray(metadataJson));
+                    }
                 } catch (Exception e) {
                     msg.put("resources", List.of());
                 }
@@ -154,6 +221,12 @@ public class ConversationService {
             result.add(msg);
         }
         return result;
+    }
+
+    /** Return durable empty sessions together with legacy history-only sessions. */
+    public List<Map<String, Object>> getSessions(Long userId) {
+        requireUserId(userId);
+        return sessionMapper.selectSessionsByUser(userId);
     }
 
     /**
@@ -247,6 +320,78 @@ public class ConversationService {
      */
     public String newSessionId() {
         return UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    /** Create and persist a new empty session for the current user. */
+    @Transactional(rollbackFor = Exception.class)
+    public String createSession(Long userId) {
+        requireUserId(userId);
+        for (int attempt = 0; attempt < SESSION_ID_CREATE_ATTEMPTS; attempt++) {
+            String sessionId = newSessionId();
+            ConversationSession session = newSession(userId, sessionId);
+            if (sessionMapper.insertIfAbsent(session) == 1) {
+                return sessionId;
+            }
+        }
+        throw new ServiceException("Unable to allocate a unique conversation session");
+    }
+
+    /** Delete the owned session and all owned messages in one database transaction. */
+    @Transactional(rollbackFor = Exception.class)
+    public int deleteSession(Long userId, String sessionId) {
+        requireUserId(userId);
+        String normalizedSessionId = requiredSessionId(sessionId);
+        int sessionRows = sessionMapper.deleteByUserAndSession(userId, normalizedSessionId);
+        int messageRows = historyMapper.softDeleteSession(userId, normalizedSessionId);
+        evictRedisAfterCommit(userId, normalizedSessionId);
+        return sessionRows + messageRows;
+    }
+
+    private void ensureSessionExists(Long userId, String sessionId) {
+        requireUserId(userId);
+        sessionMapper.insertIfAbsent(newSession(userId, sessionId));
+    }
+
+    private ConversationSession newSession(Long userId, String sessionId) {
+        ConversationSession session = new ConversationSession();
+        session.setUserId(userId);
+        session.setSessionId(sessionId);
+        return session;
+    }
+
+    private void requireUserId(Long userId) {
+        if (userId == null) {
+            throw new ServiceException("userId cannot be empty");
+        }
+    }
+
+    private String requiredSessionId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new ServiceException("sessionId cannot be empty");
+        }
+        String normalized = sessionId.trim();
+        if (normalized.length() > MAX_SESSION_ID_LENGTH) {
+            throw new ServiceException("sessionId is too long");
+        }
+        return normalized;
+    }
+
+    private void evictRedisAfterCommit(Long userId, String sessionId) {
+        Runnable eviction = () -> redisCache.deleteObject(REDIS_KEY_PREFIX + userId + ":" + sessionId);
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            eviction.run();
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            log.warn("Spring transaction is active without synchronization; Redis chat cache eviction skipped");
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                eviction.run();
+            }
+        });
     }
 
     // ===== 兼容旧方法（保留签名，内部委托给新方法） =====

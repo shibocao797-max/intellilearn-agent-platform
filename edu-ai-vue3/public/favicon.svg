@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">智学协同</title>
+  <rect width="64" height="64" rx="18" fill="#00288E"/>
+  <path d="M15 48C17.5 39.5 22.5 34.5 27.5 29.5C31 26 31.5 21.5 31.5 15" fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-width="5"/>
+  <path d="M49 48C46.5 39.5 41.5 34.5 36.5 29.5C33 26 32.5 21.5 32.5 15" fill="none" stroke="#B8C4FF" stroke-linecap="round" stroke-width="5"/>
+  <circle cx="15" cy="48" r="3.5" fill="#B8C4FF"/>
+  <circle cx="49" cy="48" r="3.5" fill="#FFFFFF"/>
+  <circle cx="32" cy="15" r="4" fill="#FFFFFF"/>
+</svg>

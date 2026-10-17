@@ -1,6 +1,7 @@
 package com.ruoyi.system.ai.agent;
 
 import com.ruoyi.system.ai.graph.EducationState;
+import com.ruoyi.system.ai.tool.KnowledgeTool;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
@@ -26,12 +27,15 @@ public class DocGenAgent implements ResourceGenAgent {
     @Autowired
     private com.ruoyi.system.ai.tool.ResourceTool resourceTool;
 
+    @Autowired
+    private KnowledgeTool knowledgeTool;
+
     @Override public String agentName() { return "docGen"; }
     @Override public String resourceType() { return "document"; }
     @Override public String displayName() { return "学习文档"; }
     @Override public String agentRole() { return "生成个性化Markdown教学文档，适配学习者水平和认知风格"; }
     @Override public String[] capabilities() { return new String[]{"文档生成", "概念讲解", "例题嵌入", "章节梳理"}; }
-    @Override public String[] tools() { return new String[]{"ChatModel"}; }
+    @Override public String[] tools() { return new String[]{"ChatModel", "KnowledgeTool", "ResourceTool"}; }
 
     @Override
     public boolean shouldGenerate(EducationState state) {
@@ -44,9 +48,13 @@ public class DocGenAgent implements ResourceGenAgent {
         String subject = extractSubject(state);
         String cogStyle = extractCognitiveStyle(state);
         String weakPoints = extractWeakPoints(state);
+        String evidence = knowledgeTool.retrieveForPrompt(state.userMessage() + "\n" + state.entitiesJson(), 5);
         return String.format("""
             你是%s领域的教学文档撰写专家。
             请根据学习者的画像（知识水平、认知风格、薄弱点）撰写个性化教学文档。
+
+            ## 可信依据片段
+            %s
 
             文档结构要求:
             # 标题
@@ -62,10 +70,13 @@ public class DocGenAgent implements ResourceGenAgent {
             ## 常见误区
             ## 本章小结
             ## 思考题
+            ## 依据来源
+            列出使用到的知识库片段标题和来源；如果知识库未命中，明确写“知识库未命中，关键事实需人工核验”。
 
             风格要求: 适应%s认知风格，重点解释%s等薄弱知识点。
             正文使用中文，每个概念配合具体例子说明。
-            """, subject, cogStyle, weakPoints);
+            专业性要求: 优先依据“可信依据片段”，不要编造教材、论文、链接或不存在的事实。
+            """, subject, evidence, cogStyle, weakPoints);
     }
 
     @Override

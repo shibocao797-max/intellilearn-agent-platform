@@ -5,6 +5,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -84,9 +85,9 @@ public class QuizGenAgent implements ResourceGenAgent {
 
     @Override
     public String persist(EducationState state, String result) {
-        int count = quizTool.saveQuestions(result);
-        String ids = quizTool.getLastSavedIds();
-        log.info("QuizGenAgent 题目已持久化: count={}, ids={}", count, ids);
+        List<Long> savedIds = quizTool.saveQuestionsAndReturnIds(result);
+        String ids = savedIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+        log.info("QuizGenAgent 题目已持久化: count={}, ids={}", savedIds.size(), ids);
         return "quiz:" + ids;
     }
 

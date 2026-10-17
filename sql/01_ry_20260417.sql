@@ -634,7 +634,7 @@ INSERT INTO `sys_config` (`config_id`, `config_name`, `config_key`, `config_valu
 INSERT INTO `sys_config` (`config_id`, `config_name`, `config_key`, `config_value`, `config_type`, `create_by`, `create_time`, `update_by`, `update_time`, `remark`) VALUES (2,'用户管理-账号初始密码','sys.user.initPassword','123456','Y','admin','2026-06-17 09:44:20','',NULL,'初始化密码 123456');
 INSERT INTO `sys_config` (`config_id`, `config_name`, `config_key`, `config_value`, `config_type`, `create_by`, `create_time`, `update_by`, `update_time`, `remark`) VALUES (3,'主框架页-侧边栏主题','sys.index.sideTheme','theme-dark','Y','admin','2026-06-17 09:44:20','',NULL,'深色主题theme-dark，浅色主题theme-light');
 INSERT INTO `sys_config` (`config_id`, `config_name`, `config_key`, `config_value`, `config_type`, `create_by`, `create_time`, `update_by`, `update_time`, `remark`) VALUES (4,'账号自助-验证码开关','sys.account.captchaEnabled','true','Y','admin','2026-06-17 09:44:20','',NULL,'是否开启验证码功能（true开启，false关闭）');
-INSERT INTO `sys_config` (`config_id`, `config_name`, `config_key`, `config_value`, `config_type`, `create_by`, `create_time`, `update_by`, `update_time`, `remark`) VALUES (5,'账号自助-是否开启用户注册功能','sys.account.registerUser','false','Y','admin','2026-06-17 09:44:20','',NULL,'是否开启注册用户功能（true开启，false关闭）');
+INSERT INTO `sys_config` (`config_id`, `config_name`, `config_key`, `config_value`, `config_type`, `create_by`, `create_time`, `update_by`, `update_time`, `remark`) VALUES (5,'账号自助-是否开启用户注册功能','sys.account.registerUser','true','Y','admin','2026-06-17 09:44:20','',NULL,'是否开启注册用户功能（true开启，false关闭）');
 INSERT INTO `sys_config` (`config_id`, `config_name`, `config_key`, `config_value`, `config_type`, `create_by`, `create_time`, `update_by`, `update_time`, `remark`) VALUES (6,'用户登录-黑名单列表','sys.login.blackIPList','','Y','admin','2026-06-17 09:44:20','',NULL,'设置登录IP黑名单限制，多个匹配项以;分隔，支持匹配（*通配、网段）');
 INSERT INTO `sys_config` (`config_id`, `config_name`, `config_key`, `config_value`, `config_type`, `create_by`, `create_time`, `update_by`, `update_time`, `remark`) VALUES (7,'用户管理-初始密码修改策略','sys.account.initPasswordModify','1','Y','admin','2026-06-17 09:44:20','',NULL,'0：初始密码修改策略关闭，没有任何提示，1：提醒用户，如果未修改初始密码，则在登录时就会提醒修改密码对话框');
 INSERT INTO `sys_config` (`config_id`, `config_name`, `config_key`, `config_value`, `config_type`, `create_by`, `create_time`, `update_by`, `update_time`, `remark`) VALUES (8,'用户管理-账号密码更新周期','sys.account.passwordValidateDays','0','Y','admin','2026-06-17 09:44:20','',NULL,'密码更新周期（填写数字，数据初始化值为0不限制，若修改必须为大于0小于365的正整数），如果超过这个周期登录系统时，则在登录时就会提醒修改密码对话框');
@@ -843,6 +843,7 @@ CREATE TABLE `sys_notice_read` (
   `notice_id` int NOT NULL COMMENT '公告id',
   `user_id` bigint NOT NULL COMMENT '用户id',
   `read_time` datetime NOT NULL COMMENT '阅读时间',
+  `deleted_time` datetime DEFAULT NULL COMMENT '当前用户隐藏时间',
   PRIMARY KEY (`read_id`),
   UNIQUE KEY `uk_user_notice` (`user_id`,`notice_id`) COMMENT '同一用户同一公告只记录一次'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='公告已读记录表';

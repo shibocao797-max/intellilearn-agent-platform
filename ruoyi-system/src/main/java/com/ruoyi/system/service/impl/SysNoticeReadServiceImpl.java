@@ -64,6 +64,15 @@ public class SysNoticeReadServiceImpl implements ISysNoticeReadService
     }
 
     /**
+     * 仅隐藏当前用户的一条公告，不删除系统公告。
+     */
+    @Override
+    public boolean hideNoticeForUser(Long noticeId, Long userId)
+    {
+        return noticeReadMapper.hideNoticeForUser(noticeId, userId) > 0;
+    }
+
+    /**
      * 查询已阅读某公告的用户列表
      */
     @Override

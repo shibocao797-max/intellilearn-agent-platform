@@ -2,31 +2,24 @@
   <div class="app-container home">
     <el-row :gutter="20">
       <el-col :sm="24" :lg="12" style="padding-left: 20px">
-        <h2>若依后台管理框架</h2>
+        <h2>智学协同教育智能体平台</h2>
         <p>
-          一直想做一款后台管理系统，看了很多优秀的开源项目但是发现没有合适自己的。于是利用空闲休息时间开始自己写一套后台系统。如此有了若依管理系统，她可以用于所有的Web应用程序，如网站管理后台，网站会员中心，CMS，CRM，OA等等，当然，您也可以对她进行深度定制，以做出更强系统。所有前端后台代码封装过后十分精简易上手，出错概率低。同时支持移动客户端访问。系统会陆续更新一些实用功能。
+          面向学习场景的 AI 多智能体教育平台。系统由调度官分析学习意图，并行调用文本答疑、文档生成、题库、思维导图和代码案例等专家 Agent，通过实时事件推送呈现任务进度与学习资源。
         </p>
         <p>
           <b>当前版本:</b> <span>v{{ version }}</span>
         </p>
         <p>
-          <el-tag type="danger">&yen;免费开源</el-tag>
+          <el-tag type="success">教育 AI 多智能体平台</el-tag>
         </p>
         <p>
           <el-button
             type="primary"
             size="mini"
-            icon="el-icon-cloudy"
+            icon="el-icon-link"
             plain
-            @click="goTarget('https://gitee.com/y_project/RuoYi-Vue')"
-            >访问码云</el-button
-          >
-          <el-button
-            size="mini"
-            icon="el-icon-s-home"
-            plain
-            @click="goTarget('http://ruoyi.vip')"
-            >访问主页</el-button
+            @click="goTarget('https://github.com/shibocao797-max/intellilearn-agent-platform')"
+            >查看项目仓库</el-button
           >
         </p>
       </el-col>
@@ -70,37 +63,20 @@
       <el-col :xs="24" :sm="24" :md="12" :lg="8">
         <el-card class="update-log">
           <div slot="header" class="clearfix">
-            <span>联系信息</span>
+            <span>平台信息</span>
           </div>
           <div class="body">
             <p>
-              <i class="el-icon-s-promotion"></i> 官网：<el-link
-                href="http://www.ruoyi.vip"
+              <i class="el-icon-s-promotion"></i> 项目：智学协同教育智能体平台
+            </p>
+            <p>
+              <i class="el-icon-s-platform"></i> 服务：多 Agent 协同、学习资源生成、SSE 实时进度推送
+            </p>
+            <p>
+              <i class="el-icon-link"></i> 仓库：<el-link
+                href="https://github.com/shibocao797-max/intellilearn-agent-platform"
                 target="_blank"
-                >http://www.ruoyi.vip</el-link
-              >
-            </p>
-            <p>
-              <i class="el-icon-user-solid"></i> QQ群：<s> 满937441 </s> <s> 满887144332 </s>
-              <s> 满180251782 </s> <s> 满104180207 </s> <s> 满186866453 </s> <s> 满201396349 </s>
-              <s> 满101456076 </s> <s> 满101539465 </s> <s> 满264312783 </s> <s> 满167385320 </s> 
-              <s> 满104748341 </s> <s> 满160110482 </s> <s> 满170801498 </s> <s> 满108482800 </s> 
-              <s> 满101046199 </s> <s> 满136919097 </s> <s> 满143961921 </s> <s> 满174951577 </s> 
-              <s> 满161281055 </s> <s> 满138988063 </s> <s> 满151450850 </s> <s> 满224622315 </s>
-              <s> 满287842588 </s> <s> 满187944233 </s> <s> 满228578329 </s> <s> 满191164766 </s>
-              <s> 满174569686 </s> <a href="http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=M9y5NjAl44lAL_Vh2crmEehZU_PMU6KS&authKey=ZSDz8hEREWSaPuxQV3gEwqGIaGjfRNnkB4rJjf0IvXhrSUGSGwQFmBA%2Boe8HFxyl&noverify=0&group_code=127358632" target="_blank">127358632</a>
-            </p>
-            <p>
-              <i class="el-icon-chat-dot-round"></i> 微信：<a
-                href="javascript:;"
-                >/ *若依</a
-              >
-            </p>
-            <p>
-              <i class="el-icon-money"></i> 支付宝：<a
-                href="javascript:;"
-                class="支付宝信息"
-                >/ *若依</a
+                >intellilearn-agent-platform</el-link
               >
             </p>
           </div>

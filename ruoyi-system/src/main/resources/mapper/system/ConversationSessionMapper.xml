@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ConversationSessionMapper">
+
+    <insert id="insertIfAbsent" parameterType="ConversationSession">
+        insert ignore into conversation_session (
+            user_id,
+            session_id,
+            title,
+            last_active_time,
+            create_time,
+            update_time
+        ) values (
+            #{userId},
+            #{sessionId},
+            #{title},
+            sysdate(),
+            sysdate(),
+            sysdate()
+        )
+    </insert>
+
+    <update id="updateAfterMessage">
+        update conversation_session
+        set title = case
+                when #{role} = 'user'
+                    and (title is null or title = '')
+                    and #{content} is not null
+                    and trim(#{content}) != ''
+                then substring(trim(#{content}), 1, 80)
+                else title
+            end,
+            last_active_time = sysdate(),
+            update_time = sysdate()
+        where user_id = #{userId}
+          and session_id = #{sessionId}
+    </update>
+
+    <!-- Include durable empty sessions and history-only sessions from pre-migration data. -->
+    <select id="selectSessionsByUser" parameterType="Long" resultType="java.util.Map">
+        with history_summary as (
+            select
+                ch.user_id,
+                ch.session_id,
+                max(ch.create_time) as last_active_time,
+                count(*) as message_count,
+                (
+                    select substring(trim(first_user.content), 1, 80)
+                    from conversation_history first_user
+                    where first_user.user_id = ch.user_id
+                      and first_user.session_id = ch.session_id
+                      and first_user.role = 'user'
+                      and first_user.content is not null
+                      and trim(first_user.content) != ''
+                    order by first_user.create_time asc, first_user.id asc
+                    limit 1
+                ) as history_title
+            from conversation_history ch
+            where ch.user_id = #{userId}
+            group by ch.user_id, ch.session_id
+        ), combined_sessions as (
+            select
+                cs.session_id as sessionId,
+                coalesce(hs.last_active_time, cs.last_active_time, cs.create_time) as lastActiveTime,
+                coalesce(hs.message_count, 0) as messageCount,
+                coalesce(nullif(cs.title, ''), hs.history_title, '') as title
+            from conversation_session cs
+            left join history_summary hs
+              on hs.user_id = cs.user_id
+             and hs.session_id = cs.session_id
+            where cs.user_id = #{userId}
+
+            union all
+
+            select
+                hs.session_id as sessionId,
+                hs.last_active_time as lastActiveTime,
+                hs.message_count as messageCount,
+                coalesce(hs.history_title, '') as title
+            from history_summary hs
+            left join conversation_session cs
+              on cs.user_id = hs.user_id
+             and cs.session_id = hs.session_id
+            where cs.id is null
+        )
+        select sessionId, lastActiveTime, messageCount, title
+        from combined_sessions
+        order by lastActiveTime desc, sessionId desc
+    </select>
+
+    <delete id="deleteByUserAndSession">
+        delete from conversation_session
+        where user_id = #{userId}
+          and session_id = #{sessionId}
+    </delete>
+
+</mapper>

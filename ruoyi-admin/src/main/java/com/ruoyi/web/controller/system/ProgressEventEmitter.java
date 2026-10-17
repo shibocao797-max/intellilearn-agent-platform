@@ -1,6 +1,7 @@
 package com.ruoyi.web.controller.system;
 
 import com.ruoyi.system.ai.graph.AgentProgressCallback;
+import com.ruoyi.system.ai.support.UserFacingTextSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -81,8 +82,48 @@ public class ProgressEventEmitter implements AgentProgressCallback {
     }
 
     @Override
+    public void onAgentMessage(Map<String, Object> messageData) {
+        sendEvent("agentMessage", messageData);
+    }
+
+    @Override
+    public void onReview(Map<String, Object> reviewData) {
+        sendEvent("review", reviewData);
+    }
+
+    @Override
+    public void onRevisionStart(Map<String, Object> revisionData) {
+        sendEvent("revisionStart", revisionData);
+    }
+
+    @Override
+    public void onRevisionResource(Map<String, Object> resourceData) {
+        sendEvent("revisionResource", resourceData);
+    }
+
+    @Override
+    public void onRevisionDone(Map<String, Object> revisionSummary) {
+        sendEvent("revisionDone", revisionSummary);
+    }
+
+    @Override
+    public void onLearningPath(Map<String, Object> pathData) {
+        sendEvent("learningPath", pathData);
+    }
+
+    @Override
+    public void onResourcePlan(Map<String, Object> planData) {
+        sendEvent("resourcePlan", planData);
+    }
+
+    @Override
+    public void onFinalRecommendations(Map<String, Object> recommendationData) {
+        sendEvent("finalRecommendations", recommendationData);
+    }
+
+    @Override
     public void onToken(String token) {
-        sendEvent("token", token);
+        sendEvent("token", UserFacingTextSanitizer.sanitize(token));
     }
 
     @Override
@@ -102,7 +143,8 @@ public class ProgressEventEmitter implements AgentProgressCallback {
 
     @Override
     public boolean isDisconnected() {
-        return clientDisconnected;
+        // Transport loss only stops writes to this emitter. It must not cancel AI execution.
+        return false;
     }
 
     // ===== 便捷方法 =====
@@ -132,7 +174,8 @@ public class ProgressEventEmitter implements AgentProgressCallback {
                 return;
             }
             try {
-                emitter.send(SseEmitter.event().name(eventName).data(data));
+                emitter.send(SseEmitter.event().name(eventName)
+                        .data(UserFacingTextSanitizer.sanitizeValue(data)));
             } catch (IOException e) {
                 // 客户端断开连接是正常情况（如中途关闭页面），记录 debug 级别日志
                 clientDisconnected = true;

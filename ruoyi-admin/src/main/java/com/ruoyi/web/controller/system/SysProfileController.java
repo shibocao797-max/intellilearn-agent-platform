@@ -1,6 +1,10 @@
 package com.ruoyi.web.controller.system;
 
 import java.util.Map;
+import java.util.UUID;
+import java.io.ByteArrayOutputStream;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import com.ruoyi.common.annotation.Log;
-import com.ruoyi.common.config.RuoYiConfig;
 import com.ruoyi.common.core.controller.BaseController;
 import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.common.core.domain.entity.SysUser;
@@ -21,7 +24,7 @@ import com.ruoyi.common.utils.DateUtils;
 import com.ruoyi.common.utils.SecurityUtils;
 import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.common.utils.file.FileStorageService;
-import com.ruoyi.common.utils.file.MimeTypeUtils;
+import com.ruoyi.common.utils.file.FileUploadUtils;
 import com.ruoyi.framework.web.service.TokenService;
 import com.ruoyi.system.service.ISysUserService;
 
@@ -34,6 +37,11 @@ import com.ruoyi.system.service.ISysUserService;
 @RequestMapping("/system/user/profile")
 public class SysProfileController extends BaseController
 {
+    private static final long MAX_AVATAR_SIZE = 5 * 1024 * 1024L;
+    private static final long MAX_AVATAR_PIXELS = 16_000_000L;
+    private static final String[] AVATAR_ALLOWED_EXTENSIONS = { "jpg", "jpeg", "png", "gif" };
+    private static final String AVATAR_STORAGE_DIRECTORY = "avatar";
+
     @Autowired
     private ISysUserService userService;
 
@@ -127,26 +135,63 @@ public class SysProfileController extends BaseController
     @PostMapping("/avatar")
     public AjaxResult avatar(@RequestParam("avatarfile") MultipartFile file) throws Exception
     {
-        if (!file.isEmpty())
+        if (file == null || file.isEmpty())
         {
-            LoginUser loginUser = getLoginUser();
-            // 通过 FileStorageService 上传头像（本地 / MinIO 自动切换）
-            String avatar = fileStorageService.upload(RuoYiConfig.getAvatarPath(), file, MimeTypeUtils.IMAGE_EXTENSION, true);
-            if (userService.updateUserAvatar(loginUser.getUserId(), avatar))
+            return error("请选择头像图片后再上传");
+        }
+        if (file.getSize() > MAX_AVATAR_SIZE)
+        {
+            return error("头像图片不能超过 5 MB");
+        }
+        String extension = FileUploadUtils.getExtension(file);
+        if (!FileUploadUtils.isAllowedExtension(extension, AVATAR_ALLOWED_EXTENSIONS))
+        {
+            return error("头像仅支持 JPG、PNG 或 GIF 图片");
+        }
+
+        BufferedImage image;
+        try (var input = file.getInputStream())
+        {
+            image = ImageIO.read(input);
+        }
+        if (image == null)
+        {
+            return error("头像文件不是有效图片");
+        }
+        if ((long) image.getWidth() * image.getHeight() > MAX_AVATAR_PIXELS)
+        {
+            return error("头像图片分辨率不能超过 1600 万像素");
+        }
+
+        byte[] safeAvatar;
+        try (var output = new ByteArrayOutputStream())
+        {
+            if (!ImageIO.write(image, "png", output))
             {
-                String oldAvatar = loginUser.getUser().getAvatar();
-                if (StringUtils.isNotEmpty(oldAvatar))
-                {
-                    // 通过 FileStorageService 删除旧头像
-                    fileStorageService.delete(oldAvatar);
-                }
-                AjaxResult ajax = AjaxResult.success();
-                ajax.put("imgUrl", avatar);
-                // 更新缓存用户头像
-                loginUser.getUser().setAvatar(avatar);
-                tokenService.setLoginUser(loginUser);
-                return ajax;
+                return error("头像图片格式无法处理");
             }
+            safeAvatar = output.toByteArray();
+        }
+
+        LoginUser loginUser = getLoginUser();
+        // 头像可被公开读取：先解码、再转码为 PNG，杜绝 SVG 和伪装扩展名内容。
+        String avatar = fileStorageService.uploadBytes(
+                AVATAR_STORAGE_DIRECTORY,
+                "avatar-" + UUID.randomUUID() + ".png",
+                safeAvatar,
+                "image/png");
+        if (userService.updateUserAvatar(loginUser.getUserId(), avatar))
+        {
+            String oldAvatar = loginUser.getUser().getAvatar();
+            if (StringUtils.isNotEmpty(oldAvatar))
+            {
+                fileStorageService.delete(oldAvatar);
+            }
+            AjaxResult ajax = AjaxResult.success();
+            ajax.put("imgUrl", avatar);
+            loginUser.getUser().setAvatar(avatar);
+            tokenService.setLoginUser(loginUser);
+            return ajax;
         }
         return error("上传图片异常，请联系管理员");
     }

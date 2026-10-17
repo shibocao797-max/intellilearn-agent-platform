@@ -1,7 +1,10 @@
 package com.ruoyi.system.mapper;
 
 import java.util.List;
+import org.apache.ibatis.annotations.Param;
 import com.ruoyi.system.domain.QuizQuestion;
+import com.ruoyi.system.domain.QuizQuestionQuery;
+import com.ruoyi.system.domain.StudentQuizQuestion;
 
 /**
  * 题库表 Mapper 接口
@@ -38,4 +41,20 @@ public interface QuizQuestionMapper
      * 更新题目正确率（答题后动态调整）
      */
     public int updateCorrectRate(Long id, java.math.BigDecimal correctRate);
+
+    /** Learner-safe, paged question-bank query. */
+    List<StudentQuizQuestion> selectStudentQuestions(@Param("query") QuizQuestionQuery query);
+
+    long countStudentQuestions(@Param("query") QuizQuestionQuery query);
+
+    StudentQuizQuestion selectStudentQuestionById(Long id);
+
+    /** Used only when restoring an already-created learner session. */
+    StudentQuizQuestion selectStudentQuestionByIdIncludingDisabled(Long id);
+
+    List<String> selectStudentQuestionTypes();
+
+    List<String> selectStudentDifficulties();
+
+    List<String> selectStudentKnowledgePointJsons();
 }

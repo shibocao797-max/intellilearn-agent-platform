@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.QuizPracticeSessionMapper">
+
+    <resultMap id="SessionResult" type="com.ruoyi.system.domain.QuizPracticeSession">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="source" column="source"/>
+        <result property="status" column="status"/>
+        <result property="totalCount" column="total_count"/>
+        <result property="submittedCount" column="submitted_count"/>
+        <result property="correctCount" column="correct_count"/>
+        <result property="currentPosition" column="current_position"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="lastActiveAt" column="last_active_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="ItemResult" type="com.ruoyi.system.domain.QuizPracticeItem">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="questionId" column="question_id"/>
+        <result property="questionSnapshotJson" column="question_snapshot_json"/>
+        <result property="positionIndex" column="position_index"/>
+        <result property="state" column="state"/>
+        <result property="draftAnswer" column="draft_answer"/>
+        <result property="flagged" column="is_flagged"/>
+        <result property="submittedAnswer" column="submitted_answer"/>
+        <result property="isCorrect" column="is_correct"/>
+        <result property="pendingReview" column="pending_review"/>
+        <result property="score" column="score"/>
+        <result property="timeSpentSec" column="time_spent_sec"/>
+        <result property="quizRecordId" column="quiz_record_id"/>
+        <result property="idempotencyKey" column="idempotency_key"/>
+        <result property="submittedAt" column="submitted_at"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <insert id="insertSession" parameterType="com.ruoyi.system.domain.QuizPracticeSession">
+        insert into quiz_practice_session
+        (id, user_id, source, status, total_count, submitted_count, correct_count, current_position,
+         started_at, last_active_at, create_time, update_time)
+        values
+        (#{id}, #{userId}, #{source}, #{status}, #{totalCount}, 0, 0, #{currentPosition},
+         sysdate(), sysdate(), sysdate(), sysdate())
+    </insert>
+
+    <insert id="insertItem" parameterType="com.ruoyi.system.domain.QuizPracticeItem" useGeneratedKeys="true" keyProperty="id">
+        insert into quiz_practice_item
+        (session_id, user_id, question_id, question_snapshot_json, position_index, state, draft_answer,
+         is_flagged, time_spent_sec, create_time, update_time)
+        values
+        (#{sessionId}, #{userId}, #{questionId}, #{questionSnapshotJson}, #{positionIndex}, #{state}, #{draftAnswer},
+         #{flagged}, 0, sysdate(), sysdate())
+    </insert>
+
+    <select id="selectSessionByIdAndUserId" resultMap="SessionResult">
+        select * from quiz_practice_session
+        where id = #{sessionId} and user_id = #{userId}
+    </select>
+
+    <select id="selectSessionForUpdateByIdAndUserId" resultMap="SessionResult">
+        select * from quiz_practice_session
+        where id = #{sessionId} and user_id = #{userId}
+        for update
+    </select>
+
+    <select id="selectActiveSessionByUserId" parameterType="Long" resultMap="SessionResult">
+        select * from quiz_practice_session
+        where user_id = #{userId} and status = 'IN_PROGRESS'
+        order by last_active_at desc, create_time desc
+        limit 1
+    </select>
+
+    <select id="selectItemsBySessionIdAndUserId" resultMap="ItemResult">
+        select * from quiz_practice_item
+        where session_id = #{sessionId} and user_id = #{userId}
+        order by position_index asc, id asc
+    </select>
+
+    <select id="selectItemForUpdate" resultMap="ItemResult">
+        select * from quiz_practice_item
+        where session_id = #{sessionId} and user_id = #{userId} and question_id = #{questionId}
+        for update
+    </select>
+
+    <update id="updateItemDraft" parameterType="com.ruoyi.system.domain.QuizPracticeItem">
+        update quiz_practice_item
+        set draft_answer = #{draftAnswer}, is_flagged = #{flagged}, state = #{state}, update_time = sysdate()
+        where id = #{id} and session_id = #{sessionId} and user_id = #{userId}
+          and state != 'SUBMITTED'
+    </update>
+
+    <update id="markItemSubmitted" parameterType="com.ruoyi.system.domain.QuizPracticeItem">
+        update quiz_practice_item
+        set state = 'SUBMITTED', draft_answer = #{submittedAnswer}, submitted_answer = #{submittedAnswer},
+            is_correct = #{isCorrect}, pending_review = #{pendingReview}, score = #{score},
+            time_spent_sec = #{timeSpentSec}, quiz_record_id = #{quizRecordId},
+            idempotency_key = #{idempotencyKey}, submitted_at = sysdate(), update_time = sysdate()
+        where id = #{id} and session_id = #{sessionId} and user_id = #{userId}
+          and state != 'SUBMITTED'
+    </update>
+
+    <update id="refreshSessionCounts">
+        update quiz_practice_session s
+        set submitted_count = (
+                select count(1) from quiz_practice_item i
+                where i.session_id = s.id and i.state = 'SUBMITTED'
+            ),
+            correct_count = (
+                select count(1) from quiz_practice_item i
+                where i.session_id = s.id and i.state = 'SUBMITTED' and i.is_correct = 1
+            ),
+            last_active_at = sysdate(), update_time = sysdate()
+        where s.id = #{sessionId} and s.user_id = #{userId}
+    </update>
+
+    <update id="updateCurrentPosition">
+        update quiz_practice_session
+        set current_position = #{currentPosition}, last_active_at = sysdate(), update_time = sysdate()
+        where id = #{sessionId} and user_id = #{userId} and status = 'IN_PROGRESS'
+    </update>
+
+    <update id="finishSession">
+        update quiz_practice_session
+        set status = #{status}, finished_at = sysdate(), last_active_at = sysdate(), update_time = sysdate()
+        where id = #{sessionId} and user_id = #{userId} and status = 'IN_PROGRESS'
+    </update>
+</mapper>

@@ -8,9 +8,9 @@
     <artifactId>ruoyi</artifactId>
     <version>3.9.2</version>
 
-    <name>ruoyi</name>
-    <url>http://www.ruoyi.vip</url>
-    <description>若依管理系统</description>
+    <name>IntelliLearn Agent Platform</name>
+    <url>https://github.com/shibocao797-max/intellilearn-agent-platform</url>
+    <description>智学协同教育智能体平台</description>
     
     <properties>
         <ruoyi.version>3.9.2</ruoyi.version>

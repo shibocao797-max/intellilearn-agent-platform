@@ -32,6 +32,17 @@ public interface FileStorageService
     String upload(String baseDir, MultipartFile file, String[] allowedExtension, boolean useCustomNaming) throws Exception;
 
     /**
+     * 上传内存字节数据（用于 AI 生成的图片、HTML、动画等非 MultipartFile 场景）
+     *
+     * @param baseDir 存储子目录
+     * @param fileName 文件名
+     * @param content 文件内容
+     * @param contentType MIME 类型
+     * @return 文件访问路径
+     */
+    String uploadBytes(String baseDir, String fileName, byte[] content, String contentType) throws Exception;
+
+    /**
      * 删除文件
      *
      * @param filePath 上传时返回的文件路径

@@ -58,7 +58,7 @@ public class ProfileUpdateAgent implements EduAgent {
 
         // === 条件 3: 冷却期检查（默认 5 分钟） ===
         String existProfile = profileTool.loadProfile(uid);
-        if (profileTool.isInCooldown(existProfile, 5)) {
+        if (profileTool.isInCooldown(uid, 5)) {
             log.debug("ProfileUpdateAgent 跳过更新: 在冷却期内（5分钟）");
             return existProfile;
         }
@@ -73,15 +73,12 @@ public class ProfileUpdateAgent implements EduAgent {
             String extractionPrompt = buildExtractionPrompt(existProfile, recentContext);
             String extractedFeatures = chatModel.chat(extractionPrompt);
 
-            // 3. 合并画像
-            String mergedProfile = profileTool.mergeProfile(existProfile, extractedFeatures);
-
-            // 4. 保存画像
-            profileTool.saveProfile(uid, mergedProfile);
-
-            log.info("ProfileUpdateAgent 画像更新完成: userId={}, profileLength={}",
-                    uid, mergedProfile != null ? mergedProfile.length() : 0);
-            return mergedProfile;
+            // 3. Only meaningful, schema-valid differences create a new profile version.
+            ProfileTool.ProfileUpdateResult result = profileTool.applyProfileUpdate(
+                    uid, extractedFeatures, state.sessionId(), state.userMessage());
+            log.info("ProfileUpdateAgent 画像处理完成: userId={}, changed={}, reason={}",
+                    uid, result.changed(), result.reason());
+            return result.profileJson();
 
         } catch (Exception e) {
             log.error("ProfileUpdateAgent 画像更新失败: userId={}, error={}", uid, e.getMessage(), e);

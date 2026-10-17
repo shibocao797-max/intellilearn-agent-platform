@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.LearnerProfileConfirmationMapper">
+    <resultMap id="ConfirmationResult" type="com.ruoyi.system.domain.LearnerProfileConfirmation">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="profileId" column="profile_id"/>
+        <result property="profileVersion" column="profile_version"/>
+        <result property="dimensionKey" column="dimension_key"/>
+        <result property="status" column="status"/>
+        <result property="correctionValueJson" column="correction_value_json"/>
+        <result property="rejectReason" column="reject_reason"/>
+        <result property="confirmedBy" column="confirmed_by"/>
+        <result property="confirmedAt" column="confirmed_at"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <select id="selectByProfile" resultMap="ConfirmationResult">
+        select id, user_id, profile_id, profile_version, dimension_key, status,
+               correction_value_json, reject_reason, confirmed_by, confirmed_at,
+               create_time, update_time
+        from learner_profile_confirmation
+        where user_id = #{userId} and profile_id = #{profileId}
+          and profile_version = #{profileVersion}
+        order by dimension_key
+    </select>
+
+    <select id="selectByDimension" resultMap="ConfirmationResult">
+        select id, user_id, profile_id, profile_version, dimension_key, status,
+               correction_value_json, reject_reason, confirmed_by, confirmed_at,
+               create_time, update_time
+        from learner_profile_confirmation
+        where user_id = #{userId} and profile_id = #{profileId}
+          and profile_version = #{profileVersion} and dimension_key = #{dimensionKey}
+    </select>
+
+    <insert id="upsert" parameterType="com.ruoyi.system.domain.LearnerProfileConfirmation">
+        insert into learner_profile_confirmation
+        (user_id, profile_id, profile_version, dimension_key, status,
+         correction_value_json, reject_reason, confirmed_by, confirmed_at, create_time, update_time)
+        values
+        (#{userId}, #{profileId}, #{profileVersion}, #{dimensionKey}, #{status},
+         #{correctionValueJson}, #{rejectReason}, #{confirmedBy}, #{confirmedAt}, sysdate(), sysdate())
+        on duplicate key update
+            status = values(status),
+            correction_value_json = values(correction_value_json),
+            reject_reason = values(reject_reason),
+            confirmed_by = values(confirmed_by),
+            confirmed_at = values(confirmed_at),
+            update_time = sysdate()
+    </insert>
+</mapper>

@@ -45,6 +45,15 @@ public interface ISysNoticeReadService
     public void markReadBatch(Long userId, Long[] noticeIds);
 
     /**
+     * 仅隐藏当前用户的一条公告。
+     *
+     * @param noticeId 公告ID
+     * @param userId 用户ID
+     * @return 是否成功隐藏
+     */
+    public boolean hideNoticeForUser(Long noticeId, Long userId);
+
+    /**
      * 查询已阅读某公告的用户列表
      *
      * @param noticeId  公告ID

@@ -48,6 +48,15 @@ public interface SysNoticeReadMapper
     public int insertNoticeReadBatch(@Param("userId") Long userId, @Param("noticeIds") Long[] noticeIds);
 
     /**
+     * 仅为当前用户隐藏一条正常状态的公告，不影响公告本体或其他用户。
+     *
+     * @param noticeId 公告ID
+     * @param userId 用户ID
+     * @return 受影响行数
+     */
+    public int hideNoticeForUser(@Param("noticeId") Long noticeId, @Param("userId") Long userId);
+
+    /**
      * 查询带已读状态的公告列表（SQL层限制条数，一次查询完成）
      *
      * @param userId 用户ID

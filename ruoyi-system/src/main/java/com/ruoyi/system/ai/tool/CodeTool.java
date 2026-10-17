@@ -41,7 +41,7 @@ public class CodeTool {
         res.setType("code");
         res.setSource("internal");
         res.setTag(tags);
-        res.setStatus("0");
+        res.setStatus(ResourceTool.STATUS_REVIEWING);
         res.setCreateBy("AI");
         res.setUserId(userId);           // AI 生成资源归属指定用户
         eduResourceMapper.insertResource(res);

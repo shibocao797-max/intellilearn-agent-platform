@@ -40,6 +40,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where id = #{id}
     </select>
 
+    <select id="selectResourceByIdAndUserId" resultMap="ResourceResult">
+        <include refid="selectResourceVo"/>
+        where id = #{id}
+          and user_id = #{userId}
+    </select>
+
     <select id="selectResourceList" parameterType="EduResource" resultMap="ResourceResult">
         <include refid="selectResourceVo"/>
         <where>
@@ -55,7 +61,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="tag != null and tag != ''">
                 AND tag = #{tag}
             </if>
-            <if test="status != null and status != ''">
+            <!-- visible/all deliberately include status 3: quality review is not generation failure. -->
+            <if test="status != null and status != '' and status != 'visible'">
                 AND status = #{status}
             </if>
             <if test="userId != null">
@@ -108,5 +115,33 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             sysdate()
         )
     </insert>
+
+    <update id="updateResourceStatus" parameterType="EduResource">
+        update edu_resource
+        set status = #{status},
+            update_by = #{updateBy},
+            update_time = sysdate()
+        where id = #{id}
+    </update>
+
+    <update id="updateMediaResource" parameterType="EduResource">
+        update edu_resource
+        <set>
+            <if test="content != null">content = #{content},</if>
+            <if test="sourceUrl != null">source_url = #{sourceUrl},</if>
+            <if test="coverUrl != null">cover_url = #{coverUrl},</if>
+            <if test="duration != null">duration = #{duration},</if>
+            <if test="status != null">status = #{status},</if>
+            update_by = #{updateBy},
+            update_time = sysdate()
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteResourceByIdAndUserId">
+        delete from edu_resource
+        where id = #{id}
+          and user_id = #{userId}
+    </delete>
 
 </mapper>

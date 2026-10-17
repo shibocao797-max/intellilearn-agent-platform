@@ -1,7 +1,7 @@
 {
   "name": "ruoyi",
   "version": "3.9.2",
-  "description": "若依管理系统",
+  "description": "智学协同教育智能体平台管理端",
   "author": "若依",
   "license": "MIT",
   "scripts": {

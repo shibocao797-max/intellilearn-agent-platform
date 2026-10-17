@@ -29,9 +29,9 @@ public class EduReportController extends BaseController {
      *       consecutiveDays, totalStudyHours, completedNodes, radarData, dailyDuration
      */
     @GetMapping("/summary")
-    public AjaxResult getSummary() {
+    public AjaxResult getSummary(@RequestParam(defaultValue = "30") Integer rangeDays) {
         Long userId = SecurityUtils.getUserId();
-        Map<String, Object> summary = eduReportService.getSummary(userId);
+        Map<String, Object> summary = eduReportService.getSummary(userId, rangeDays == null ? 30 : rangeDays);
         return success(summary);
     }
 
@@ -41,9 +41,9 @@ public class EduReportController extends BaseController {
      * GET /edu/report/detailed
      */
     @GetMapping("/detailed")
-    public AjaxResult getDetailed() {
+    public AjaxResult getDetailed(@RequestParam(defaultValue = "30") Integer rangeDays) {
         Long userId = SecurityUtils.getUserId();
-        Map<String, Object> detailed = eduReportService.getDetailed(userId);
+        Map<String, Object> detailed = eduReportService.getDetailed(userId, rangeDays == null ? 30 : rangeDays);
         return success(detailed);
     }
 }

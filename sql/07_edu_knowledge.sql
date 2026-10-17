@@ -1,0 +1,65 @@
+-- 教育知识库切片表：用于轻量 RAG 召回可信依据
+
+CREATE TABLE IF NOT EXISTS `edu_knowledge_chunk` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `title` varchar(200) NOT NULL COMMENT '知识标题',
+  `subject` varchar(100) DEFAULT NULL COMMENT '学科',
+  `grade_level` varchar(50) DEFAULT NULL COMMENT '适用层次',
+  `source_type` varchar(50) DEFAULT NULL COMMENT '来源类型: textbook/official_doc/course_note/manual',
+  `source_name` varchar(200) DEFAULT NULL COMMENT '来源名称',
+  `source_url` varchar(500) DEFAULT NULL COMMENT '来源链接',
+  `chunk_text` mediumtext NOT NULL COMMENT '切片正文',
+  `chunk_index` int DEFAULT 0 COMMENT '切片序号',
+  `tags` varchar(500) DEFAULT NULL COMMENT '标签',
+  `trust_level` varchar(20) DEFAULT 'medium' COMMENT '可信等级: high/medium/low',
+  `content_hash` varchar(64) NOT NULL COMMENT '内容哈希',
+  `enabled` char(1) DEFAULT '0' COMMENT '状态: 0=启用 1=停用',
+  `create_time` datetime DEFAULT NULL COMMENT '创建时间',
+  `update_time` datetime DEFAULT NULL COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_content_hash` (`content_hash`),
+  KEY `idx_subject` (`subject`),
+  KEY `idx_enabled` (`enabled`),
+  KEY `idx_trust_level` (`trust_level`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='教育知识库切片表';
+
+INSERT INTO `edu_knowledge_chunk`
+(`title`, `subject`, `grade_level`, `source_type`, `source_name`, `source_url`, `chunk_text`, `chunk_index`, `tags`, `trust_level`, `content_hash`, `enabled`, `create_time`, `update_time`)
+VALUES
+('二叉树基本定义', '数据结构', '本科入门', 'textbook', '数据结构课程知识库', NULL,
+ '二叉树是每个节点最多有两个子树的树结构，两个子树通常称为左子树和右子树。二叉树可以为空；非空二叉树由根节点、左子树和右子树组成。前序遍历顺序是根、左、右；中序遍历顺序是左、根、右；后序遍历顺序是左、右、根。', 1,
+ '二叉树,树,前序遍历,中序遍历,后序遍历,数据结构', 'high', 'kb_binary_tree_definition_v1', '0', sysdate(), sysdate()),
+('二叉搜索树性质', '数据结构', '本科入门', 'textbook', '数据结构课程知识库', NULL,
+ '二叉搜索树是一类有序二叉树：任意节点的左子树中所有节点值通常小于该节点值，右子树中所有节点值通常大于该节点值。对二叉搜索树进行中序遍历可以得到有序序列。若树严重倾斜，查找效率会退化到线性复杂度。', 2,
+ '二叉树,二叉搜索树,BST,中序遍历,查找', 'high', 'kb_bst_property_v1', '0', sysdate(), sysdate()),
+('冒泡排序核心思想', '算法', '本科入门', 'course_note', '算法基础课程知识库', NULL,
+ '冒泡排序通过多轮相邻元素比较和交换完成排序。每一轮从未排序区间左侧开始，相邻两个元素若顺序错误就交换；一轮结束后，未排序区间中的最大元素会移动到右端。外层循环控制轮数，内层循环控制本轮相邻比较范围。', 1,
+ '冒泡排序,排序,算法,双层循环,相邻交换', 'high', 'kb_bubble_sort_core_v1', '0', sysdate(), sysdate()),
+('冒泡排序复杂度与优化', '算法', '本科入门', 'course_note', '算法基础课程知识库', NULL,
+ '冒泡排序的平均和最坏时间复杂度通常为 O(n^2)，空间复杂度为 O(1)。若某一轮遍历中没有发生交换，说明序列已经有序，可以提前终止，这是常见优化。讲解时要强调内层循环上界会随着已排序尾部元素增加而缩小。', 2,
+ '冒泡排序,时间复杂度,空间复杂度,提前终止,优化', 'high', 'kb_bubble_sort_complexity_v1', '0', sysdate(), sysdate()),
+('C语言指针基础', 'C语言程序设计', '本科入门', 'course_note', 'C语言课程知识库', NULL,
+ '指针是保存内存地址的变量。取地址运算符 & 用于获得变量地址，解引用运算符 * 用于通过地址访问或修改该地址处的数据。声明 int *p 表示 p 是一个指向 int 类型对象的指针。使用指针前应初始化，常见安全做法是先置为 NULL。', 1,
+ 'C语言,指针,取地址,解引用,NULL,内存地址', 'high', 'kb_c_pointer_basic_v1', '0', sysdate(), sysdate()),
+('C语言指针常见风险', 'C语言程序设计', '本科入门', 'course_note', 'C语言课程知识库', NULL,
+ '指针常见风险包括未初始化指针、悬垂指针、数组越界访问和动态内存释放遗漏。使用 malloc 分配内存后需要在不再使用时调用 free；释放后继续访问原指针可能导致未定义行为。教学时应要求学生画出变量、地址和指针指向关系。', 2,
+ 'C语言,指针,malloc,free,野指针,悬垂指针,越界访问', 'high', 'kb_c_pointer_risks_v1', '0', sysdate(), sysdate()),
+('SQL 查询基础', '数据库', '本科入门', 'course_note', '数据库课程知识库', NULL,
+ 'SQL 查询通常由 SELECT、FROM、WHERE、GROUP BY、HAVING、ORDER BY 等子句组成。WHERE 在分组前过滤行，HAVING 在分组后过滤聚合结果。讲解练习题时应区分行过滤与分组过滤，并说明聚合函数如 COUNT、SUM、AVG 的使用场景。', 1,
+ 'SQL,SELECT,WHERE,GROUP BY,HAVING,ORDER BY,聚合函数', 'high', 'kb_sql_query_basic_v1', '0', sysdate(), sysdate()),
+('机器学习基本流程', '机器学习', '本科入门', 'course_note', '机器学习入门课程知识库', NULL,
+ '机器学习项目通常包括问题定义、数据收集、数据清洗、特征工程、模型训练、模型评估和上线监控。监督学习使用带标签数据学习输入到输出的映射，常见任务包括分类和回归。评估分类模型时可使用准确率、精确率、召回率等指标。', 1,
+ '机器学习,监督学习,分类,回归,特征工程,模型评估', 'high', 'kb_ml_workflow_v1', '0', sysdate(), sysdate())
+ON DUPLICATE KEY UPDATE
+  `title` = VALUES(`title`),
+  `subject` = VALUES(`subject`),
+  `grade_level` = VALUES(`grade_level`),
+  `source_type` = VALUES(`source_type`),
+  `source_name` = VALUES(`source_name`),
+  `source_url` = VALUES(`source_url`),
+  `chunk_text` = VALUES(`chunk_text`),
+  `chunk_index` = VALUES(`chunk_index`),
+  `tags` = VALUES(`tags`),
+  `trust_level` = VALUES(`trust_level`),
+  `enabled` = VALUES(`enabled`),
+  `update_time` = sysdate();

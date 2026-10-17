@@ -30,6 +30,14 @@
         LIMIT #{limit}
     </select>
 
+    <select id="selectRecentByUserAndDays" resultMap="BehaviorLogResult">
+        SELECT * FROM learning_behavior_log
+        WHERE user_id = #{userId}
+          AND create_time >= DATE_SUB(CURDATE(), INTERVAL (#{days} - 1) DAY)
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
     <!-- 按天数聚合统计：指定天数内的行为次数和活跃天数 -->
     <select id="selectStatsByDays" resultType="java.util.Map">
         SELECT
@@ -42,7 +50,7 @@
             COALESCE(SUM(CASE WHEN action_type = 'CONVERSATION' THEN 1 ELSE 0 END), 0) AS conversationCount
         FROM learning_behavior_log
         WHERE user_id = #{userId}
-          AND create_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+          AND create_time >= DATE_SUB(CURDATE(), INTERVAL (#{days} - 1) DAY)
     </select>
 
     <!-- 按行为类型统计分布 -->
@@ -52,7 +60,7 @@
             COUNT(*) AS cnt
         FROM learning_behavior_log
         WHERE user_id = #{userId}
-          AND create_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+          AND create_time >= DATE_SUB(CURDATE(), INTERVAL (#{days} - 1) DAY)
         GROUP BY action_type
         ORDER BY cnt DESC
     </select>
@@ -61,10 +69,11 @@
     <select id="selectDailyDuration" resultType="java.util.Map">
         SELECT
             DATE(create_time) AS date,
-            COALESCE(SUM(COALESCE(duration_sec, 0)), 0) / 60 AS minutes
+            COALESCE(SUM(COALESCE(duration_sec, 0)), 0) / 60 AS minutes,
+            COUNT(*) AS actionCount
         FROM learning_behavior_log
         WHERE user_id = #{userId}
-          AND create_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+          AND create_time >= DATE_SUB(CURDATE(), INTERVAL (#{days} - 1) DAY)
         GROUP BY DATE(create_time)
         ORDER BY date ASC
     </select>

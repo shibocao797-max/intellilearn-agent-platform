@@ -108,6 +108,7 @@ public class BehaviorTool {
         result.put("totalActions", 0);
         result.put("actionDistribution", List.of());
         result.put("dailyDuration", List.of());
+        result.put("sourceAvailable", false);
 
         try {
             // ① 聚合统计（指定天数内）
@@ -143,6 +144,7 @@ public class BehaviorTool {
             // ⑤ 连续学习天数（Java 层从活跃日期列表计算，避免纯 SQL 复杂性）
             int consecutiveDays = computeConsecutiveDays(userId);
             result.put("consecutiveDays", consecutiveDays);
+            result.put("sourceAvailable", true);
 
         } catch (Exception e) {
             log.warn("行为统计聚合失败（返回空结果）: userId={}, error={}", userId, e.getMessage());
@@ -159,36 +161,31 @@ public class BehaviorTool {
      * 从 today 往前遍历，每遇到一个活跃日期就计数，遇到缺失就 break。
      */
     private int computeConsecutiveDays(Long userId) {
-        try {
-            List<String> dateStrs = behaviorLogMapper.selectConsecutiveDays(userId);
-            if (dateStrs == null || dateStrs.isEmpty()) return 0;
+        List<String> dateStrs = behaviorLogMapper.selectConsecutiveDays(userId);
+        if (dateStrs == null || dateStrs.isEmpty()) return 0;
 
-            Set<LocalDate> activeDates = new HashSet<>();
-            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-            for (String ds : dateStrs) {
-                try {
-                    activeDates.add(LocalDate.parse(ds, fmt));
-                } catch (Exception ignore) {
-                    // 日期解析失败跳过
-                }
+        Set<LocalDate> activeDates = new HashSet<>();
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        for (String ds : dateStrs) {
+            try {
+                activeDates.add(LocalDate.parse(ds, fmt));
+            } catch (Exception ignore) {
+                // 日期解析失败跳过
             }
-
-            int consecutive = 0;
-            LocalDate cursor = LocalDate.now();
-            // 从今天开始往前数，最多 60 天
-            for (int i = 0; i < MAX_CONSECUTIVE_DAYS_QUERY; i++) {
-                if (activeDates.contains(cursor)) {
-                    consecutive++;
-                    cursor = cursor.minus(1, ChronoUnit.DAYS);
-                } else {
-                    break;  // 中断，停止计数
-                }
-            }
-            return consecutive;
-        } catch (Exception e) {
-            log.warn("连续天数计算失败: userId={}, error={}", userId, e.getMessage());
-            return 0;
         }
+
+        int consecutive = 0;
+        LocalDate cursor = LocalDate.now();
+        // 从今天开始往前数，最多 60 天
+        for (int i = 0; i < MAX_CONSECUTIVE_DAYS_QUERY; i++) {
+            if (activeDates.contains(cursor)) {
+                consecutive++;
+                cursor = cursor.minus(1, ChronoUnit.DAYS);
+            } else {
+                break;  // 中断，停止计数
+            }
+        }
+        return consecutive;
     }
 
     /**
@@ -205,6 +202,11 @@ public class BehaviorTool {
             log.warn("行为日志查询失败: userId={}, error={}", userId, e.getMessage());
             return List.of();
         }
+    }
+
+    /** 获取指定统计范围内的近期行为，保证报告活动列表与范围选择一致。 */
+    public List<LearningBehaviorLog> getRecentLogs(Long userId, int days, int limit) {
+        return behaviorLogMapper.selectRecentByUserAndDays(userId, days, limit);
     }
 
 }

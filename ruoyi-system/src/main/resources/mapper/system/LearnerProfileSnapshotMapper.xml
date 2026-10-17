@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.LearnerProfileSnapshotMapper">
+    <resultMap type="LearnerProfileSnapshot" id="SnapshotResult">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="profileId" column="profile_id"/>
+        <result property="version" column="version"/>
+        <result property="profileJson" column="profile_json"/>
+        <result property="changeSummary" column="change_summary"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+    <insert id="insertSnapshot" parameterType="LearnerProfileSnapshot" useGeneratedKeys="true" keyProperty="id">
+        insert into learner_profile_snapshot (user_id, profile_id, version, profile_json, change_summary)
+        values (#{userId}, #{profileId}, #{version}, #{profileJson}, #{changeSummary})
+    </insert>
+    <select id="selectSnapshotsByUserId" parameterType="Long" resultMap="SnapshotResult">
+        select id, user_id, profile_id, version, profile_json, change_summary, create_time
+        from learner_profile_snapshot where user_id = #{userId} order by version desc limit 20
+    </select>
+</mapper>

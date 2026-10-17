@@ -47,6 +47,27 @@ INSERT INTO `learner_profile` (`id`, `user_id`, `profile_json`, `version`, `dime
 UNLOCK TABLES;
 
 --
+-- Table structure for table `conversation_session`
+--
+
+DROP TABLE IF EXISTS `conversation_session`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `conversation_session` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint NOT NULL COMMENT '用户ID',
+  `session_id` varchar(64) NOT NULL COMMENT '会话ID',
+  `title` varchar(80) DEFAULT NULL COMMENT '首条用户消息标题',
+  `last_active_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近活跃时间',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_conversation_session_user_session` (`user_id`,`session_id`),
+  KEY `idx_conversation_session_user_active` (`user_id`,`last_active_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='AI会话表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `conversation_history`
 --
 
@@ -87,6 +108,32 @@ INSERT INTO `conversation_history` (`id`, `user_id`, `session_id`, `role`, `cont
 INSERT INTO `conversation_history` (`id`, `user_id`, `session_id`, `role`, `content`, `intent_type`, `metadata_json`, `create_time`) VALUES (17,1,'80ff8aa1','assistant','# C语言指针：从入门到理解的可视化指南\n\n作为编程中的“内存操控术”，指针是C语言的灵魂概念。我为你设计了一个循序渐进的讲解，配合思维导图，帮你真正理解指针。\n\n## 思维导图：指针全景视图\n\n```mermaid\nmindmap\n  root((C语言指针))\n    是什么\n      存储内存地址的变量\n      像“门牌号”指向实际位置\n      核心价值：直接操作内存\n    基础概念\n      声明与初始化\n        int *p;  // 声明一个指向整型的指针\n        p = &a;  // 获取变量a的地址\n      两个关键操作符\n        & 取地址操作符\n        * 解引用操作符\n      指针变量大小\n        总是相同的(4或8字节)\n        与指向的数据类型无关\n    指针与变量\n      通过指针修改变量\n      指针作为函数参数\n      为什么重要\n        直接修改原数据\n        避免拷贝大对象\n    指针与数组\n      数组名是首元素地址\n      指针算术运算\n        p+1 移动到下一个元素\n        p[i] 等价于 *(p+i)\n    指针与字符串\n      字符串本质是字符数组\n      字符串指针操作\n    进阶概念\n      指针的指针\n        int **pp;  // 二级指针\n      函数指针\n        指向函数的指针\n        实现回调机制\n      动态内存分配\n        malloc / free\n        new / delete(C++)\n    常见陷阱\n      野指针\n        未初始化的指针\n        悬垂指针\n      内存泄漏\n        分配后忘记释放\n      越界访问\n        数组指针越界\n    实践建议\n      多画内存图理解\n      从小例子开始练习\n      使用调试器观察地址\n```\n\n## 一、指针是什么？用现实世界比喻\n\n**简单说：指针是存储“内存地址”的变量。**\n\n想象一下：\n- **变量**：就像一栋大楼里的房间，每个房间有房间号（地址）和房间内容（值）\n- **指针**：就像一张便签纸，上面写着某个房间的房间号\n\n```c\n#include <stdio.h>\n\nint main() {\n    int a = 100;        // 变量a：房间里存了100\n    int *p = &a;        // 指针p：便签纸上写着“a的房间号”\n    \n    printf(\"a的值：%d\\n\", a);\n    printf(\"a的地址：%p\\n\", &a);    // & 取地址\n    printf(\"p存储的地址：%p\\n\", p);  // p里存的就是地址\n    printf(\"通过p找到的值：%d\\n\", *p); // * 解引用：根据地址找值\n    \n    return 0;\n}\n```\n\n输出：\n```\na的值：100\na的地址：0x7ffd5e8a3b4c\np存储的地址：0x7ffd5e8a3b4c\n通过p找到的值：100\n```\n\n## 二、指针的核心操作：两大操作符\n\n1. **`&`（取地址符）**：获取变量的内存地址\n2. **`*`（解引用符）**：通过地址访问/修改内存中的值\n\n```c\nint num = 42;\nint *ptr = &num;  // ptr指向num的地址\n\n// 通过指针修改变量\n*ptr = 100;       // 把num的值改成100\nprintf(\"num现在是：%d\\n\", num);  // 输出：100\n```\n\n## 三、指针的威力：函数参数传递\n\n**问题**：函数如何直接修改传入的变量？\n\n```c\n// 错误示范：普通变量作为参数\nvoid swap_wrong(int a, int b) {\n    int temp = a;  // 只是修改了函数内的局部副本\n    a = b;\n    b = temp;\n}\n\n// 正确示范：指针作为参数\nvoid swap_right(int *a, int *b) {\n    int temp = *a;  // 通过指针直接访问原变量\n    *a = *b;\n    *b = temp;\n}\n\nint main() {\n    int x = 5, y = 10;\n    \n    printf(\"交换前：x=%d, y=%d\\n\", x, y);\n    \n    swap_wrong(x, y);\n    printf(\"错误交换后：x=%d, y=%d\\n\", x, y);  // 没有改变\n    \n    swap_right(&x, &y);  // 传入地址\n    printf(\"正确交换后：x=%d, y=%d\\n\", x, y);  // 成功交换\n    \n    return 0;\n}\n```\n\n## 四、指针与数组：天然的搭档\n\n数组名就是指向第一个元素的指针！\n\n```c\n#include <stdio.h>\n\nint main() {\n    int arr[5] = {10, 20, 30, 40, 50};\n    int *p = arr;  // 等价于 int *p = &arr[0];\n    \n    // 三种访问数组元素的方式\n    for(int i = 0; i < 5; i++) {\n        printf(\"方式1: arr[%d] = %d\\n\", i, arr[i]);\n        printf(\"方式2: *(arr+%d) = %d\\n\", i, *(arr+i));\n        printf(\"方式3: *(p+%d) = %d\\n\", i, *(p+i));\n        printf(\"方式4: p[%d] = %d\\n\\n\", i, p[i]); // 指针也可以用[]语法\n    }\n    \n    // 指针算术：移动指针\n    printf(\"p初始指向：%p，值=%d\\n\", p, *p);\n    p++;  // 移动到下一个int（通常是4字节）\n    printf(\"p++后指向：%p，值=%d\\n\", p, *p);\n    \n    return 0;\n}\n```\n\n## 五、初学者常见错误\n\n```c\n// 错误1：野指针（未初始化的指针）\nint *p1;           // 危险！p1指向随机地址\n*p1 = 100;         // 可能导致程序崩溃\n\n// 正确做法：初始化指针\nint *p2 = NULL;    // 先置空\n// 使用前检查：if(p2 != NULL) {...}\n\n// 错误2：内存泄漏（忘记释放动态内存）\nint *p3 = malloc(sizeof(int) * 10);  // 分配内存\n// ... 使用p3\n// 忘记 free(p3);  // 内存泄漏！\n\n// 错误3：越界访问\nint arr[5] = {1,2,3,4,5};\nint *p4 = arr;\np4 += 10;  // 超出了数组范围，危险操作！\n```\n\n## 六、动手实践建议\n\n**从这些小练习开始：**\n\n1. **基础练习**：写一个函数，用指针交换两个变量的值\n2. **数组练习**：用指针遍历并打印数组所有元素\n3. **字符串练习**：用指针实现strlen函数（计算字符串长度）\n4. **进阶挑战**：用指针实现冒泡排序\n\n```c\n// 练习：用指针实现字符串长度\nint my_strlen(char *str) {\n    int count = 0;\n    while(*str != \'\\0\') {  // 字符串以\'\\0\'结尾\n        count++;\n        str++;  // 指针向后移动\n    }\n    return count;\n}\n\n// 测试\nint main() {\n    char name[] = \"Hello C!\";\n    printf(\"\'%s\'的长度是：%d\\n\", name, my_strlen(name));\n    return 0;\n}\n```\n\n## 七、关键理解检验\n\n思考一下这几个问题：\n1. **如果不用指针，如何让一个函数返回多个值？**\n2. **数组名`arr`和指针`arr+1`有什么区别？**\n3. **为什么说“指针是C语言的双刃剑”？**\n\n**理解指针的关键**：多画内存图！每次使用指针时，在纸上画出：\n- 变量在哪里？（内存地址）\n- 指针指向哪里？（存储的地址）\n- 通过指针访问什么？（解引用后的值）\n\n## 学习路径建议\n\n既然你未来要从事软件开发，指针的学习路线可以这样：\n\n1. **第一周**：掌握基本概念和操作（变量指针、函数参数）\n2. **第二周**：理解数组指针和字符串操作\n3. **第三周**：学习动态内存分配（malloc/free）\n4. **第四周**：挑战二级指针和函数指针\n5. **持续练习**：通过实现链表、树等数据结构巩固理解\n\n**小提醒**：指针初学时觉得难是非常正常的，坚持练习和画图，1-2个月后你会突然“开窍”。这也是为什么C语言程序员通常对内存管理理解更深，这对学习其他高级语言和系统编程都有帮助！\n\n需要我为你设计一个具体的指针练习项目（比如实现链表），或者解释某个具体概念的更多细节吗？',NULL,'[{\"content\": \"@startmindmap\\n* 指针\\n** 基本概念\\n*** 什么是指针\\n**** 存储地址变量\\n*** 声明与初始化\\n**** int *p = &a;\\n*** 解引用\\n**** 访问指向值\\n** 操作与运算\\n*** 指针算术\\n**** 加减偏移\\n*** 指针比较\\n**** 相等与否\\n** 与数组关系\\n*** 数组名指针\\n**** 首元素地址\\n*** 指针访问数组\\n**** p[i] 等价\\n** 高级应用\\n*** 多级指针\\n**** 指向指针指针\\n*** 函数指针\\n**** 调用函数\\n*** 动态内存\\n**** malloc和free\\n** 注意事项\\n*** 空指针\\n**** NULL指针\\n*** 野指针\\n**** 未初始化\\n*** const修饰\\n**** 指针常量\\n**** 常量指针\\n@endmindmap\", \"quality\": 1.0, \"success\": true, \"agentName\": \"mindmapGen\", \"durationMs\": 44346, \"displayName\": \"思维导图\", \"persistedId\": \"mindmap:5\", \"resourceType\": \"mindmap\"}]','2026-06-17 15:39:13');
 /*!40000 ALTER TABLE `conversation_history` ENABLE KEYS */;
 UNLOCK TABLES;
+
+-- Backfill the session table from bundled legacy conversation history.
+INSERT INTO `conversation_session` (`user_id`, `session_id`, `title`, `last_active_time`, `create_time`, `update_time`)
+SELECT
+  ch.`user_id`,
+  ch.`session_id`,
+  (
+    SELECT SUBSTRING(TRIM(first_user.`content`), 1, 80)
+    FROM `conversation_history` first_user
+    WHERE first_user.`user_id` = ch.`user_id`
+      AND first_user.`session_id` = ch.`session_id`
+      AND first_user.`role` = 'user'
+      AND first_user.`content` IS NOT NULL
+      AND TRIM(first_user.`content`) != ''
+    ORDER BY first_user.`create_time` ASC, first_user.`id` ASC
+    LIMIT 1
+  ),
+  COALESCE(MAX(ch.`create_time`), CURRENT_TIMESTAMP),
+  COALESCE(MIN(ch.`create_time`), CURRENT_TIMESTAMP),
+  COALESCE(MAX(ch.`create_time`), CURRENT_TIMESTAMP)
+FROM `conversation_history` ch
+GROUP BY ch.`user_id`, ch.`session_id`
+ON DUPLICATE KEY UPDATE
+  `title` = COALESCE(NULLIF(`conversation_session`.`title`, ''), VALUES(`title`)),
+  `last_active_time` = GREATEST(`conversation_session`.`last_active_time`, VALUES(`last_active_time`)),
+  `update_time` = GREATEST(`conversation_session`.`update_time`, VALUES(`update_time`));
 
 --
 -- Table structure for table `quiz_question`

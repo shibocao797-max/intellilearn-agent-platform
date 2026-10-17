@@ -9,6 +9,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="noticeId" column="notice_id"   />
         <result property="userId"   column="user_id"     />
         <result property="readTime" column="read_time"   />
+        <result property="deletedTime" column="deleted_time" />
     </resultMap>
 
     <!-- 新增已读记录 -->
@@ -25,7 +26,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <!-- 查询是否已读 -->
     <select id="selectIsRead" resultType="int">
-        select count(*) from sys_notice_read where notice_id = #{noticeId} and user_id = #{userId}
+        select count(*) from sys_notice_read where notice_id = #{noticeId} and user_id = #{userId} and deleted_time is null
     </select>
 
     <!-- 查询带已读状态的公告列表（直接在SQL中限制条数） -->
@@ -41,7 +42,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from sys_notice n
         left join sys_notice_read r
             on r.notice_id = n.notice_id and r.user_id = #{userId}
-        where n.status = '0'
+        where n.status = '0' and r.deleted_time is null
         order by n.notice_id desc
         limit #{limit}
     </select>
@@ -53,6 +54,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <foreach collection="noticeIds" item="noticeId" separator=",">
             (#{noticeId}, #{userId}, sysdate())
         </foreach>
+    </insert>
+
+    <!-- 只对当前用户隐藏。通过 select 保证不能为不存在或已停用公告造出孤立状态记录。 -->
+    <insert id="hideNoticeForUser">
+        insert into sys_notice_read (notice_id, user_id, read_time, deleted_time)
+        select n.notice_id, #{userId}, sysdate(), sysdate()
+        from sys_notice n
+        where n.notice_id = #{noticeId} and n.status = '0'
+        on duplicate key update deleted_time = values(deleted_time)
     </insert>
 
     <!-- 删除公告时清理已读记录 -->
@@ -75,7 +85,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from sys_notice_read r
         inner join sys_user u on u.user_id = r.user_id and u.del_flag = '0'
         left join sys_dept d on d.dept_id = u.dept_id
-        where r.notice_id = #{noticeId}
+        where r.notice_id = #{noticeId} and r.deleted_time is null
         <if test="searchValue != null and searchValue != ''">
             and (
                 u.user_name like concat('%', #{searchValue}, '%')

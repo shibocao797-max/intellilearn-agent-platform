@@ -22,6 +22,9 @@ public interface LearningBehaviorLogMapper {
      */
     List<LearningBehaviorLog> selectRecentByUser(Long userId, int limit);
 
+    /** 查询指定统计范围内的近期行为。 */
+    List<LearningBehaviorLog> selectRecentByUserAndDays(Long userId, int days, int limit);
+
     /**
      * 按行为类型查询用户统计（指定天数内）
      *

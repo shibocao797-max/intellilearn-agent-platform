@@ -41,6 +41,31 @@ nbdist/
 *.log
 *.xml.versionsBackup
 *.swp
+*.tmp
+*.bak
+*.orig
+
+# Local tool/workspace state
+.agents/
+.claude/
+.codex/
+.codex-temp/
+output/
+tmp/
+tmp-*/
+tmp-*
+tmp_*.docx
+.github/FUNDING.yml
+
+# Frontend dependencies and build output
+**/node_modules/
+**/dist/
+**/.vite/
+**/coverage/
+
+# Local secrets
+config/local-secrets.yml
+ruoyi-admin/config/local-secrets.yml
 
 !*/build/*.java
 !*/build/*.html

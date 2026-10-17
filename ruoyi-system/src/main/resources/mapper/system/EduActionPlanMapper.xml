@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduActionPlanMapper">
+ <resultMap id="Plan" type="com.ruoyi.system.domain.EduActionPlan"><id property="id" column="id"/><result property="userId" column="user_id"/><result property="sourceStatus" column="source_status"/><result property="sourceProfileVersion" column="source_profile_version"/><result property="createTime" column="create_time"/><result property="updateTime" column="update_time"/></resultMap>
+ <resultMap id="Item" type="com.ruoyi.system.domain.EduActionPlanItem"><id property="id" column="id"/><result property="planId" column="plan_id"/><result property="userId" column="user_id"/><result property="sortOrder" column="sort_order"/><result property="completedAt" column="completed_at"/><result property="createTime" column="create_time"/><result property="updateTime" column="update_time"/></resultMap>
+ <insert id="insertPlan" parameterType="EduActionPlan" useGeneratedKeys="true" keyProperty="id">insert into edu_action_plan(user_id,title,summary,status,source_status,source_profile_version,create_time,update_time) values(#{userId},#{title},#{summary},#{status},#{sourceStatus},#{sourceProfileVersion},sysdate(),sysdate())</insert>
+ <insert id="insertItem" parameterType="EduActionPlanItem" useGeneratedKeys="true" keyProperty="id">insert into edu_action_plan_item(plan_id,user_id,sort_order,title,description,status,create_time,update_time) values(#{planId},#{userId},#{sortOrder},#{title},#{description},#{status},sysdate(),sysdate())</insert>
+ <select id="selectPlanByIdAndUserId" resultMap="Plan">select * from edu_action_plan where id=#{id} and user_id=#{userId}</select>
+ <select id="selectPlansByUserId" resultMap="Plan">select * from edu_action_plan where user_id=#{userId} order by create_time desc</select>
+ <select id="selectCurrentPlanByUserId" resultMap="Plan">select * from edu_action_plan where user_id=#{userId} and status='ACTIVE' order by update_time desc limit 1</select>
+ <select id="selectItemsByPlanIdAndUserId" resultMap="Item">select * from edu_action_plan_item where plan_id=#{planId} and user_id=#{userId} order by sort_order,id</select>
+ <update id="activatePlan">update edu_action_plan set status='ACTIVE',update_time=sysdate() where id=#{id} and user_id=#{userId} and status='DRAFT'</update>
+ <update id="archivePlan">update edu_action_plan set status='ARCHIVED',update_time=sysdate() where id=#{id} and user_id=#{userId} and status in ('DRAFT','ACTIVE')</update>
+ <update id="archivePlanCurrent">update edu_action_plan set status='ARCHIVED',update_time=sysdate() where user_id=#{userId} and status='ACTIVE'</update>
+ <update id="updateItemStatus">update edu_action_plan_item set status=#{status},completed_at=case when #{status}='COMPLETED' then sysdate() else null end,update_time=sysdate() where id=#{itemId} and user_id=#{userId}</update>
+ <select id="selectItemByIdAndUserId" resultMap="Item">select * from edu_action_plan_item where id=#{itemId} and user_id=#{userId}</select>
+</mapper>

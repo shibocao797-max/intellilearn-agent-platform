@@ -9,22 +9,24 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * 学习报告 Service 实现 — 聚合多表数据生成学习报告
+ * 学习报告数据聚合。
  *
- * 数据来源：
- * - learning_behavior_log → 学习时长/连续天数/行为日志
- * - quiz_record → 答题统计/正确率
- * - learner_profile → 维度数
- *
- * @author edu-agent
+ * 报告只返回可追溯的行为、测验和画像数据；没有记录时返回明确的空集合，
+ * 由前端展示空状态，绝不补造图表数据。
  */
 @Service
 public class EduReportServiceImpl implements IEduReportService {
 
     private static final Logger log = LoggerFactory.getLogger(EduReportServiceImpl.class);
+    private static final Set<Integer> SUPPORTED_RANGE_DAYS = Set.of(7, 30, 90);
 
     @Autowired
     private BehaviorTool behaviorTool;
@@ -36,120 +38,205 @@ public class EduReportServiceImpl implements IEduReportService {
     private QuizRecordMapper quizRecordMapper;
 
     @Override
-    public Map<String, Object> getSummary(Long userId) {
+    public Map<String, Object> getSummary(Long userId, int rangeDays) {
+        int days = normalizeRangeDays(rangeDays);
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("userId", userId);
+        result.put("rangeDays", days);
 
+        Map<String, Object> rangeStats = behaviorTool.getRecentStats(userId, days);
+        Map<String, Object> todayStats = behaviorTool.getRecentStats(userId, 1);
+        List<String> sourceErrors = new ArrayList<>();
+        boolean behaviorAvailable = isSourceAvailable(rangeStats) && isSourceAvailable(todayStats);
+        result.put("behaviorAvailable", behaviorAvailable);
+        if (!behaviorAvailable) {
+            sourceErrors.add("学习行为");
+        }
+        result.put("todayActions", asInt(todayStats.get("totalActions")));
+        result.put("todayMinutes", asInt(todayStats.get("todayMinutes")));
+        result.put("rangeStudyHours", asDouble(rangeStats.get("totalStudyHours")));
+        result.put("rangeActions", asInt(rangeStats.get("totalActions")));
+        result.put("consecutiveDays", asInt(rangeStats.get("consecutiveDays")));
+        result.put("dailyActivity", buildDailyActivity(rangeStats.get("dailyDuration"), days));
+        result.put("actionDistribution", normalizeActionDistribution(rangeStats.get("actionDistribution")));
+
+        if (!appendQuizSummary(result, userId, days)) {
+            sourceErrors.add("测验");
+        }
+        appendProfileSummary(result, userId);
         try {
-            // ① 行为统计（近7天）
-            Map<String, Object> behaviorStats = behaviorTool.getRecentStats(userId, 7);
-
-            int totalActions = behaviorStats.get("totalActions") != null
-                    ? (int) behaviorStats.get("totalActions") : 0;
-            double totalStudyHours = behaviorStats.get("totalStudyHours") != null
-                    ? ((Number) behaviorStats.get("totalStudyHours")).doubleValue() : 0.0;
-            int todayMinutes = behaviorStats.get("todayMinutes") != null
-                    ? (int) behaviorStats.get("todayMinutes") : 0;
-            int completedNodes = behaviorStats.get("completedNodes") != null
-                    ? (int) behaviorStats.get("completedNodes") : 0;
-            int consecutiveDays = behaviorStats.get("consecutiveDays") != null
-                    ? (int) behaviorStats.get("consecutiveDays") : 0;
-            List<Map<String, Object>> dailyDuration = behaviorStats.get("dailyDuration") != null
-                    ? (List<Map<String, Object>>) behaviorStats.get("dailyDuration") : List.of();
-
-            result.put("todayMinutes", todayMinutes);
-            result.put("todayStudyHours", Math.round(todayMinutes / 60.0 * 10.0) / 10.0);
-            result.put("totalStudyHours", totalStudyHours);
-            result.put("totalActions", totalActions);
-            result.put("completedNodes", completedNodes);
-            result.put("consecutiveDays", consecutiveDays);
-            result.put("dailyDuration", dailyDuration);
-
-            // ② 答题统计
-            try {
-                Map<String, Object> quizStats = quizRecordMapper.selectStats(userId);
-                if (quizStats != null) {
-                    Object totalObj = quizStats.get("total");
-                    Object correctObj = quizStats.get("correct");
-                    int total = totalObj != null ? ((Number) totalObj).intValue() : 0;
-                    int correct = correctObj != null ? ((Number) correctObj).intValue() : 0;
-                    double rate = total > 0 ? Math.round(correct * 1000.0 / total) / 10.0 : 0.0;
-                    result.put("quizTotal", total);
-                    result.put("quizCorrect", correct);
-                    result.put("quizCorrectRate", rate + "%");
-                } else {
-                    result.put("quizTotal", 0);
-                    result.put("quizCorrect", 0);
-                    result.put("quizCorrectRate", "0%");
-                }
-            } catch (Exception e) {
-                log.warn("答题统计查询失败: userId={}, error={}", userId, e.getMessage());
-                result.put("quizTotal", 0);
-                result.put("quizCorrect", 0);
-                result.put("quizCorrectRate", "0%");
-            }
-
-            // ③ 画像维度数
-            try {
-                String profileJson = profileTool.loadProfile(userId);
-                int dimensionCount = 0;
-                if (profileJson != null && !profileJson.equals("{}")) {
-                    var json = com.alibaba.fastjson2.JSON.parseObject(profileJson);
-                    var dims = json.getJSONObject("dimensions");
-                    if (dims != null) {
-                        dimensionCount = dims.size();
-                    }
-                }
-                result.put("profileDimensions", dimensionCount);
-                result.put("masteredConcepts", dimensionCount);
-            } catch (Exception e) {
-                log.warn("画像数据提取失败: userId={}, error={}", userId, e.getMessage());
-                result.put("profileDimensions", 0);
-                result.put("masteredConcepts", 0);
-            }
-
-        } catch (Exception e) {
-            log.error("学习报告聚合失败: userId={}, error={}", userId, e.getMessage(), e);
-            if (!result.containsKey("todayMinutes")) {
-                result.put("todayMinutes", 0);
-                result.put("totalStudyHours", 0.0);
-                result.put("quizCorrectRate", "0%");
-                result.put("consecutiveDays", 0);
-                result.put("completedNodes", 0);
-                result.put("masteredConcepts", 0);
+            result.put("quizTrend", quizRecordMapper.selectPerformanceTrend(userId, days));
+        } catch (Exception error) {
+            log.warn("读取测验趋势失败: userId={}, days={}, error={}", userId, days, error.getMessage());
+            result.put("quizAvailable", false);
+            result.put("quizTrend", List.of());
+            if (!sourceErrors.contains("测验")) {
+                sourceErrors.add("测验");
             }
         }
-
+        result.put("sourceErrors", sourceErrors);
         return result;
     }
 
     @Override
-    public Map<String, Object> getDetailed(Long userId) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("userId", userId);
-
+    public Map<String, Object> getDetailed(Long userId, int rangeDays) {
+        int days = normalizeRangeDays(rangeDays);
+        Map<String, Object> result = new LinkedHashMap<>(getSummary(userId, days));
+        List<String> sourceErrors = mutableSourceErrors(result);
         try {
-            result.putAll(getSummary(userId));
+            result.put("recentLogs", behaviorTool.getRecentLogs(userId, days, 20));
+            result.put("behaviorActivityAvailable", true);
+        } catch (Exception error) {
+            log.warn("读取近期学习行为失败: userId={}, error={}", userId, error.getMessage());
+            result.put("recentLogs", List.of());
+            result.put("behaviorActivityAvailable", false);
+            addSourceError(sourceErrors, "近期学习行为");
+        }
+        try {
+            result.put("quizRecords", quizRecordMapper.selectByUserInRange(userId, days, 50));
+            result.put("quizActivityAvailable", true);
+        } catch (Exception error) {
+            log.warn("读取近期测验记录失败: userId={}, error={}", userId, error.getMessage());
+            result.put("quizRecords", List.of());
+            result.put("quizActivityAvailable", false);
+            addSourceError(sourceErrors, "近期测验记录");
+        }
+        return result;
+    }
 
-            // ① 最近行为日志
-            result.put("recentLogs", behaviorTool.getRecentLogs(userId, 20));
+    private boolean appendQuizSummary(Map<String, Object> result, Long userId, int days) {
+        try {
+            Map<String, Object> quizStats = quizRecordMapper.selectStatsInRange(userId, days);
+            int assessed = asInt(quizStats == null ? null : quizStats.get("objectiveAnsweredCount"));
+            int correct = asInt(quizStats == null ? null : quizStats.get("objectiveCorrectCount"));
+            int pending = asInt(quizStats == null ? null : quizStats.get("pendingReviewCount"));
+            result.put("quizAssessedTotal", assessed);
+            result.put("quizCorrect", correct);
+            result.put("quizPendingReview", pending);
+            result.put("quizCorrectRate", assessed > 0
+                    ? Math.round(correct * 1000.0 / assessed) / 10.0
+                    : null);
+            result.put("quizAvailable", true);
+            return true;
+        } catch (Exception error) {
+            log.warn("读取测验统计失败: userId={}, days={}, error={}", userId, days, error.getMessage());
+            result.put("quizAssessedTotal", 0);
+            result.put("quizCorrect", 0);
+            result.put("quizPendingReview", 0);
+            result.put("quizCorrectRate", null);
+            result.put("quizAvailable", false);
+            return false;
+        }
+    }
 
-            // ② 近30天数据
-            Map<String, Object> stats30 = behaviorTool.getRecentStats(userId, 30);
-            result.put("monthlyStats", stats30);
-
-            // ③ 答题记录
-            try {
-                result.put("quizRecords", quizRecordMapper.selectByUser(userId, 50));
-            } catch (Exception e) {
-                result.put("quizRecords", List.of());
+    private void appendProfileSummary(Map<String, Object> result, Long userId) {
+        try {
+            String profileJson = profileTool.loadProfile(userId);
+            int dimensionCount = 0;
+            if (profileJson != null && !profileJson.equals("{}")) {
+                var json = com.alibaba.fastjson2.JSON.parseObject(profileJson);
+                var dimensions = json.getJSONObject("dimensions");
+                if (dimensions != null) {
+                    dimensionCount = dimensions.size();
+                }
             }
+            result.put("profileDimensions", dimensionCount);
+        } catch (Exception error) {
+            log.warn("读取学习画像统计失败: userId={}, error={}", userId, error.getMessage());
+            result.put("profileDimensions", 0);
+        }
+    }
 
-        } catch (Exception e) {
-            log.error("详细报告生成失败: userId={}, error={}", userId, e.getMessage(), e);
-            result.put("message", "数据聚合异常，请稍后再试");
+    private List<Map<String, Object>> buildDailyActivity(Object rawValue, int days) {
+        Map<String, Map<String, Object>> byDate = new LinkedHashMap<>();
+        if (rawValue instanceof List<?> rawList) {
+            for (Object item : rawList) {
+                if (!(item instanceof Map<?, ?> rawItem)) {
+                    continue;
+                }
+                Object rawDate = rawItem.get("date");
+                if (rawDate == null) {
+                    continue;
+                }
+                String date = String.valueOf(rawDate);
+                if (date.length() >= 10) {
+                    date = date.substring(0, 10);
+                }
+                Map<String, Object> value = new LinkedHashMap<>();
+                value.put("minutes", asDouble(rawItem.get("minutes")));
+                value.put("actionCount", asInt(rawItem.get("actionCount")));
+                byDate.put(date, value);
+            }
         }
 
+        List<Map<String, Object>> daily = new ArrayList<>();
+        LocalDate startDate = LocalDate.now().minusDays(days - 1L);
+        for (int offset = 0; offset < days; offset++) {
+            String date = startDate.plusDays(offset).toString();
+            Map<String, Object> values = byDate.getOrDefault(date, Map.of());
+            Map<String, Object> day = new LinkedHashMap<>();
+            day.put("date", date);
+            day.put("minutes", asDouble(values.get("minutes")));
+            day.put("actionCount", asInt(values.get("actionCount")));
+            daily.add(day);
+        }
+        return daily;
+    }
+
+    private List<Map<String, Object>> normalizeActionDistribution(Object rawValue) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (!(rawValue instanceof List<?> rawList)) {
+            return result;
+        }
+        for (Object item : rawList) {
+            if (!(item instanceof Map<?, ?> rawItem)) {
+                continue;
+            }
+            int count = asInt(rawItem.get("cnt"));
+            if (count <= 0) {
+                continue;
+            }
+            Map<String, Object> value = new LinkedHashMap<>();
+            Object actionType = rawItem.get("actionType");
+            value.put("actionType", actionType == null ? "" : String.valueOf(actionType));
+            value.put("count", count);
+            result.add(value);
+        }
         return result;
+    }
+
+    private int normalizeRangeDays(int requestedDays) {
+        return SUPPORTED_RANGE_DAYS.contains(requestedDays) ? requestedDays : 30;
+    }
+
+    private boolean isSourceAvailable(Map<String, Object> stats) {
+        return stats != null && !Boolean.FALSE.equals(stats.get("sourceAvailable"));
+    }
+
+    private List<String> mutableSourceErrors(Map<String, Object> result) {
+        List<String> errors = new ArrayList<>();
+        Object rawErrors = result.get("sourceErrors");
+        if (rawErrors instanceof List<?> values) {
+            for (Object value : values) {
+                if (value != null) {
+                    addSourceError(errors, String.valueOf(value));
+                }
+            }
+        }
+        result.put("sourceErrors", errors);
+        return errors;
+    }
+
+    private void addSourceError(List<String> sourceErrors, String sourceName) {
+        if (!sourceErrors.contains(sourceName)) {
+            sourceErrors.add(sourceName);
+        }
+    }
+
+    private int asInt(Object value) {
+        return value instanceof Number number ? number.intValue() : 0;
+    }
+
+    private double asDouble(Object value) {
+        return value instanceof Number number ? number.doubleValue() : 0.0;
     }
 }

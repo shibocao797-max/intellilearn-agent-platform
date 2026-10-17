@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduAiTaskMapper">
+    <resultMap id="TaskResult" type="com.ruoyi.system.domain.EduAiTask">
+        <id property="taskId" column="task_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="clientRequestId" column="client_request_id"/>
+        <result property="message" column="message"/>
+        <result property="attachmentIdsJson" column="attachment_ids_json"/>
+        <result property="attachmentContext" column="attachment_context"/>
+        <result property="status" column="status"/>
+        <result property="cancelRequested" column="cancel_requested"/>
+        <result property="resultJson" column="result_json"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="createTime" column="create_time"/>
+        <result property="startTime" column="start_time"/>
+        <result property="finishTime" column="finish_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <sql id="taskColumns">
+        task_id,user_id,session_id,client_request_id,message,attachment_ids_json,
+        attachment_context,status,cancel_requested,result_json,error_message,
+        create_time,start_time,finish_time,update_time
+    </sql>
+
+    <insert id="insertOrIgnore" parameterType="com.ruoyi.system.domain.EduAiTask">
+        insert into edu_ai_task
+        (task_id,user_id,session_id,client_request_id,message,attachment_ids_json,
+         attachment_context,status,cancel_requested,create_time,update_time)
+        values
+        (#{taskId},#{userId},#{sessionId},#{clientRequestId},#{message},#{attachmentIdsJson},
+         #{attachmentContext},#{status},0,sysdate(),sysdate())
+        on duplicate key update task_id = task_id
+    </insert>
+
+    <select id="selectByTaskId" resultMap="TaskResult">
+        select <include refid="taskColumns"/> from edu_ai_task where task_id=#{taskId}
+    </select>
+    <select id="selectByTaskIdForUpdate" resultMap="TaskResult">
+        select <include refid="taskColumns"/> from edu_ai_task where task_id=#{taskId} for update
+    </select>
+    <select id="selectOwned" resultMap="TaskResult">
+        select <include refid="taskColumns"/> from edu_ai_task where task_id=#{taskId} and user_id=#{userId}
+    </select>
+    <select id="selectByUserAndClientRequestId" resultMap="TaskResult">
+        select <include refid="taskColumns"/> from edu_ai_task
+        where user_id=#{userId} and client_request_id=#{clientRequestId}
+    </select>
+    <select id="selectByUserAndClientRequestIdForUpdate" resultMap="TaskResult">
+        select <include refid="taskColumns"/> from edu_ai_task
+        where user_id=#{userId} and client_request_id=#{clientRequestId} for update
+    </select>
+    <select id="selectActive" resultMap="TaskResult">
+        select <include refid="taskColumns"/> from edu_ai_task
+        where user_id=#{userId} and status in ('QUEUED','RUNNING')
+        <if test="sessionId != null and sessionId != ''">and session_id=#{sessionId}</if>
+        order by create_time desc
+    </select>
+    <select id="selectInterrupted" resultMap="TaskResult">
+        select <include refid="taskColumns"/> from edu_ai_task
+        where status in ('QUEUED','RUNNING') order by create_time asc
+    </select>
+    <select id="selectCancelRequested" resultType="java.lang.Boolean">
+        select cancel_requested from edu_ai_task where task_id=#{taskId}
+    </select>
+
+    <update id="markRunning">
+        update edu_ai_task set status='RUNNING',start_time=sysdate(),update_time=sysdate()
+        where task_id=#{taskId} and status='QUEUED' and cancel_requested=0
+    </update>
+    <update id="requestCancel">
+        update edu_ai_task set cancel_requested=1,update_time=sysdate()
+        where task_id=#{taskId} and user_id=#{userId}
+          and status in ('QUEUED','RUNNING') and cancel_requested=0
+    </update>
+    <update id="markQueuedCancelled">
+        update edu_ai_task set status='CANCELLED',finish_time=sysdate(),update_time=sysdate()
+        where task_id=#{taskId} and user_id=#{userId}
+          and status='QUEUED' and cancel_requested=1
+    </update>
+    <update id="markTerminal">
+        update edu_ai_task
+        set status=#{status},result_json=#{resultJson},error_message=#{errorMessage},
+            finish_time=sysdate(),update_time=sysdate()
+        where task_id=#{taskId} and status in ('QUEUED','RUNNING')
+    </update>
+</mapper>

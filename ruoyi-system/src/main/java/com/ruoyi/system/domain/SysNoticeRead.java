@@ -23,6 +23,9 @@ public class SysNoticeRead
     /** 阅读时间 */
     private Date readTime;
 
+    /** 当前用户隐藏时间 */
+    private Date deletedTime;
+
     public Long getReadId()
     {
         return readId;
@@ -63,6 +66,16 @@ public class SysNoticeRead
         this.readTime = readTime;
     }
 
+    public Date getDeletedTime()
+    {
+        return deletedTime;
+    }
+
+    public void setDeletedTime(Date deletedTime)
+    {
+        this.deletedTime = deletedTime;
+    }
+
     @Override
     public String toString()
     {
@@ -71,6 +84,7 @@ public class SysNoticeRead
             .append("noticeId", getNoticeId())
             .append("userId", getUserId())
             .append("readTime", getReadTime())
+            .append("deletedTime", getDeletedTime())
             .toString();
     }
 }

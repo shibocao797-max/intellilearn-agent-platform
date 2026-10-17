@@ -1,8 +1,29 @@
 <template>
   <div class="app-container edu-quiz">
+    <el-row :gutter="16" class="quiz-stats">
+      <el-col :xs="24" :sm="8">
+        <div class="stat-box">
+          <div class="stat-value">{{ quizStats.total || 0 }}</div>
+          <div class="stat-label">累计答题</div>
+        </div>
+      </el-col>
+      <el-col :xs="24" :sm="8">
+        <div class="stat-box success">
+          <div class="stat-value">{{ quizStats.correct || 0 }}</div>
+          <div class="stat-label">回答正确</div>
+        </div>
+      </el-col>
+      <el-col :xs="24" :sm="8">
+        <div class="stat-box warning">
+          <div class="stat-value">{{ formatSeconds(quizStats.avgTimeSec) }}</div>
+          <div class="stat-label">平均用时</div>
+        </div>
+      </el-col>
+    </el-row>
+
     <el-row :gutter="20">
       <!-- 左侧题目列表 -->
-      <el-col :span="8">
+      <el-col :xs="24" :md="8">
         <el-card>
           <div slot="header">
             <span>题目列表</span>
@@ -35,21 +56,34 @@
       </el-col>
 
       <!-- 右侧答题区域 -->
-      <el-col :span="16">
-        <el-card v-if="currentQuestion">
+      <el-col :xs="24" :md="16">
+        <el-card v-if="currentQuestion" v-loading="questionLoading">
           <div slot="header">
             <span>{{ getTypeName(currentQuestion.questionType) }}</span>
             <el-tag size="mini" :type="getDifficultyTag(currentQuestion.difficulty)" style="margin-left: 8px;">
               {{ getDifficultyName(currentQuestion.difficulty) }}
             </el-tag>
+            <span v-if="currentQuestion.correctRate !== null && currentQuestion.correctRate !== undefined" class="correct-rate">
+              历史正确率 {{ formatRate(currentQuestion.correctRate) }}
+            </span>
           </div>
 
           <!-- 题干 -->
           <div class="question-stem">{{ currentQuestion.stem }}</div>
+          <div v-if="parseKnowledgePoints(currentQuestion.knowledgePoints).length" class="knowledge-points">
+            <el-tag
+              v-for="point in parseKnowledgePoints(currentQuestion.knowledgePoints)"
+              :key="point"
+              size="mini"
+              type="info"
+            >
+              {{ point }}
+            </el-tag>
+          </div>
 
           <!-- 选项（选择题） -->
           <div v-if="isChoiceType(currentQuestion.questionType)" class="options">
-            <el-radio-group v-if="currentQuestion.questionType === 'single_choice'" v-model="userAnswer">
+            <el-radio-group v-if="isSingleChoice(currentQuestion.questionType)" v-model="userAnswer">
               <el-radio
                 v-for="(opt, idx) in parseOptions(currentQuestion.options)"
                 :key="idx"
@@ -61,7 +95,7 @@
               </el-radio>
             </el-radio-group>
 
-            <el-checkbox-group v-else-if="currentQuestion.questionType === 'multi_choice'" v-model="userAnswerMulti">
+            <el-checkbox-group v-else-if="isMultiChoice(currentQuestion.questionType)" v-model="userAnswerMulti">
               <el-checkbox
                 v-for="(opt, idx) in parseOptions(currentQuestion.options)"
                 :key="idx"
@@ -138,11 +172,34 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <el-card class="record-card" v-loading="recordsLoading">
+      <div slot="header">
+        <span>最近答题记录</span>
+        <el-button style="float: right; padding: 3px 0" type="text" @click="loadRecords">刷新</el-button>
+      </div>
+      <el-table :data="records" size="small" border>
+        <el-table-column prop="answerTime" label="答题时间" min-width="160" />
+        <el-table-column prop="questionId" label="题目 ID" width="100" />
+        <el-table-column prop="userAnswer" label="我的答案" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="isCorrect" label="结果" width="100">
+          <template slot-scope="scope">
+            <el-tag size="mini" :type="scope.row.isCorrect ? 'success' : 'danger'">
+              {{ scope.row.isCorrect ? '正确' : '错误' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="score" label="得分" width="90" />
+        <el-table-column prop="timeSpentSec" label="用时" width="100">
+          <template slot-scope="scope">{{ formatSeconds(scope.row.timeSpentSec) }}</template>
+        </el-table-column>
+      </el-table>
+    </el-card>
   </div>
 </template>
 
 <script>
-import { getQuizList, submitAnswer, aiExplain } from '@/api/edu/quiz'
+import { aiExplain, getQuizDetail, getQuizList, getQuizRecords, getQuizStats, submitAnswer } from '@/api/edu/quiz'
 
 export default {
   name: 'EduQuiz',
@@ -150,17 +207,23 @@ export default {
     return {
       questions: [],
       currentQuestion: null,
+      questionLoading: false,
       userAnswer: '',
       userAnswerMulti: [],
       submitting: false,
       showResult: false,
       result: {},
       aiExplanation: '',
-      loadingExplanation: false
+      loadingExplanation: false,
+      quizStats: {},
+      records: [],
+      recordsLoading: false
     }
   },
   created() {
     this.loadQuestions()
+    this.loadStats()
+    this.loadRecords()
   },
   methods: {
     async loadQuestions() {
@@ -172,33 +235,84 @@ export default {
       }
     },
 
-    selectQuestion(q) {
+    async selectQuestion(q) {
       this.currentQuestion = q
       this.userAnswer = ''
       this.userAnswerMulti = []
       this.showResult = false
       this.result = {}
       this.aiExplanation = ''
+      this.questionLoading = true
+      try {
+        const res = await getQuizDetail(q.id)
+        this.currentQuestion = res.data || q
+      } catch (e) {
+        this.$message.error('加载题目详情失败')
+      } finally {
+        this.questionLoading = false
+      }
     },
 
     isChoiceType(type) {
-      return type === 'single_choice' || type === 'multi_choice'
+      return this.isSingleChoice(type) || this.isMultiChoice(type)
+    },
+
+    normalizeQuestionType(type) {
+      const map = {
+        single: 'single_choice',
+        choice: 'single_choice',
+        radio: 'single_choice',
+        singleChoice: 'single_choice',
+        multiple: 'multi_choice',
+        multi: 'multi_choice',
+        checkbox: 'multi_choice',
+        multiple_choice: 'multi_choice',
+        multiChoice: 'multi_choice',
+        fill: 'fill_blank',
+        blank: 'fill_blank',
+        fillBlank: 'fill_blank',
+        short: 'short_answer',
+        answer: 'short_answer',
+        shortAnswer: 'short_answer'
+      }
+      return map[type] || type
+    },
+
+    isSingleChoice(type) {
+      return this.normalizeQuestionType(type) === 'single_choice'
+    },
+
+    isMultiChoice(type) {
+      return this.normalizeQuestionType(type) === 'multi_choice'
     },
 
     parseOptions(options) {
       if (!options) return []
       try {
+        let parsed = options
         if (typeof options === 'string') {
-          return JSON.parse(options)
+          parsed = JSON.parse(options)
         }
-        return options
+        return (parsed || []).map((item, idx) => {
+          if (typeof item === 'string') {
+            const match = item.match(/^([A-Z])[\.\、\s]+(.+)$/)
+            return {
+              key: match ? match[1] : String.fromCharCode(65 + idx),
+              value: match ? match[2] : item
+            }
+          }
+          return {
+            key: item.key || item.label || String.fromCharCode(65 + idx),
+            value: item.value || item.text || item.content || ''
+          }
+        })
       } catch (e) {
         return []
       }
     },
 
     async handleSubmit() {
-      const answer = this.currentQuestion.questionType === 'multi_choice'
+      const answer = this.isMultiChoice(this.currentQuestion.questionType)
         ? this.userAnswerMulti.join(',')
         : this.userAnswer
 
@@ -215,6 +329,7 @@ export default {
         })
         this.result = res.data
         this.showResult = true
+        await Promise.all([this.loadStats(), this.loadRecords()])
       } catch (e) {
         this.$message.error('提交失败')
       } finally {
@@ -244,7 +359,51 @@ export default {
       }
     },
 
+    async loadStats() {
+      try {
+        const res = await getQuizStats()
+        this.quizStats = res.data || {}
+      } catch (e) {
+        console.error('加载题库统计失败', e)
+      }
+    },
+
+    async loadRecords() {
+      this.recordsLoading = true
+      try {
+        const res = await getQuizRecords({ limit: 20 })
+        this.records = res.data || []
+      } catch (e) {
+        console.error('加载答题记录失败', e)
+      } finally {
+        this.recordsLoading = false
+      }
+    },
+
+    parseKnowledgePoints(points) {
+      if (!points) return []
+      try {
+        const parsed = typeof points === 'string' ? JSON.parse(points) : points
+        return Array.isArray(parsed) ? parsed : []
+      } catch (e) {
+        return []
+      }
+    },
+
+    formatSeconds(value) {
+      if (!value) return '-'
+      if (value < 60) return Math.round(value) + '秒'
+      return Math.round(value / 60) + '分钟'
+    },
+
+    formatRate(value) {
+      const n = Number(value)
+      if (Number.isNaN(n)) return value
+      return n <= 1 ? Math.round(n * 100) + '%' : Math.round(n) + '%'
+    },
+
     getTypeName(type) {
+      const normalized = this.normalizeQuestionType(type)
       const map = {
         single_choice: '单选题',
         multi_choice: '多选题',
@@ -252,10 +411,11 @@ export default {
         short_answer: '简答题',
         code: '编程题'
       }
-      return map[type] || type
+      return map[normalized] || type
     },
 
     getTypeTag(type) {
+      const normalized = this.normalizeQuestionType(type)
       const map = {
         single_choice: '',
         multi_choice: 'success',
@@ -263,7 +423,7 @@ export default {
         short_answer: 'info',
         code: 'danger'
       }
-      return map[type] || ''
+      return map[normalized] || ''
     },
 
     getDifficultyName(diff) {
@@ -280,6 +440,37 @@ export default {
 </script>
 
 <style scoped lang="scss">
+.quiz-stats {
+  margin-bottom: 16px;
+}
+
+.stat-box {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 16px;
+  background: #f8fbff;
+  margin-bottom: 12px;
+
+  &.success {
+    background: #f6ffed;
+  }
+
+  &.warning {
+    background: #fff7e6;
+  }
+
+  .stat-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: #303133;
+  }
+
+  .stat-label {
+    margin-top: 4px;
+    color: #909399;
+  }
+}
+
 .question-list {
   max-height: calc(100vh - 250px);
   overflow-y: auto;
@@ -325,7 +516,22 @@ export default {
   font-size: 16px;
   line-height: 1.8;
   color: #333;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
+}
+
+.correct-rate {
+  margin-left: 12px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.knowledge-points {
+  margin-bottom: 16px;
+
+  .el-tag {
+    margin-right: 6px;
+    margin-bottom: 6px;
+  }
 }
 
 .options {
@@ -415,5 +621,9 @@ export default {
   p {
     margin-top: 16px;
   }
+}
+
+.record-card {
+  margin-top: 16px;
 }
 </style>

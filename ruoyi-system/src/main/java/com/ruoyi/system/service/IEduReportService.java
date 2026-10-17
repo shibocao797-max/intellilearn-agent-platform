@@ -26,7 +26,7 @@ public interface IEduReportService {
      *   - radarData: 六维能力雷达图数据
      *   - recentActions: 最近行为日志列表（前 10 条）
      */
-    Map<String, Object> getSummary(Long userId);
+    Map<String, Object> getSummary(Long userId, int rangeDays);
 
     /**
      * 获取详细学习报告
@@ -34,5 +34,5 @@ public interface IEduReportService {
      * @param userId 用户 ID
      * @return 详细报告数据
      */
-    Map<String, Object> getDetailed(Long userId);
+    Map<String, Object> getDetailed(Long userId, int rangeDays);
 }

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduUserWorkspaceMapper">
+
+    <resultMap type="EduUserWorkspace" id="EduUserWorkspaceResult">
+        <id property="id" column="id" />
+        <result property="userId" column="user_id" />
+        <result property="workspaceJson" column="workspace_json" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="selectWorkspaceVo">
+        select id, user_id, workspace_json, create_time, update_time
+        from edu_user_workspace
+    </sql>
+
+    <select id="selectByUserId" parameterType="Long" resultMap="EduUserWorkspaceResult">
+        <include refid="selectWorkspaceVo" />
+        where user_id = #{userId}
+        limit 1
+    </select>
+
+    <insert id="insertWorkspace" parameterType="EduUserWorkspace" useGeneratedKeys="true" keyProperty="id">
+        insert into edu_user_workspace (
+            user_id,
+            workspace_json,
+            create_time,
+            update_time
+        ) values (
+            #{userId},
+            #{workspaceJson},
+            sysdate(),
+            sysdate()
+        )
+    </insert>
+
+    <update id="updateWorkspaceByUserId" parameterType="EduUserWorkspace">
+        update edu_user_workspace
+        set workspace_json = #{workspaceJson},
+            update_time = sysdate()
+        where user_id = #{userId}
+    </update>
+
+</mapper>

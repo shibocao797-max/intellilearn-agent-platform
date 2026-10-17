@@ -1,7 +1,7 @@
 # 项目相关配置
 ruoyi:
   # 名称
-  name: RuoYi
+  name: 智学协同教育智能体平台
   # 版本
   version: 3.9.2
   # 版权年份
@@ -47,6 +47,11 @@ user:
 
 # Spring配置
 spring:
+  config:
+    import:
+      - optional:file:./config/local-secrets.yml
+      - optional:file:../config/local-secrets.yml
+      - optional:file:../../config/local-secrets.yml
   # 资源信息
   messages:
     # 国际化资源文件路径
@@ -97,7 +102,7 @@ token:
   # 令牌自定义标识
   header: Authorization
   # 令牌密钥
-  secret: abcdefghijklmnopqrstuvwxyz
+  secret: ${TOKEN_SECRET:dev-only-change-me}
   # 令牌有效期（默认30分钟）
   expireTime: 30
 
@@ -153,22 +158,22 @@ file-storage:
   # MinIO 配置（仅 type=minio 时生效）
   minio:
     # MinIO 服务地址（API端口，非Console端口）
-    endpoint: http://localhost:19000
+    endpoint: ${MINIO_ENDPOINT:http://localhost:19000}
     # 访问密钥
-    access-key: minio
+    access-key: ${MINIO_ACCESS_KEY:minio}
     # 秘密密钥
-    secret-key: minio123456
+    secret-key: ${MINIO_SECRET_KEY:minio123456}
     # 存储桶名称（启动时自动创建）
-    bucket: edu-agent
+    bucket: ${MINIO_BUCKET:edu-agent}
 
 # ========== LangChain4j 配置（多智能体系统 LLM 调用层） ==========
 langchain4j:
   open-ai:
     # 主模型 — 复杂生成（文档、代码、画像抽取）
     chat-model:
-      base-url: https://api.xiaomimimo.com/v1
-      api-key: tp-c52alohrxtyp6rw2d7uw2b5szi5rfhfzfl11zk2dx7n3ytkc
-      model-name: mimo-v2.5-pro
+      base-url: ${AGNES_TEXT_BASE_URL:https://apihub.agnes-ai.com/v1}
+      api-key: ${AGNES_TEXT_API_KEY:}
+      model-name: ${AGNES_TEXT_MODEL_NAME:agnes-2.0-flash}
       max-tokens: 16384
       temperature: 0.7
       timeout: 600s
@@ -176,12 +181,30 @@ langchain4j:
       log-responses: false
     # 流式模型 — SSE 流式输出（辅导答疑）
     streaming-chat-model:
-      base-url: https://api.xiaomimimo.com/v1
-      api-key: tp-c52alohrxtyp6rw2d7uw2b5szi5rfhfzfl11zk2dx7n3ytkc
-      model-name: mimo-v2.5-pro
+      base-url: ${AGNES_TEXT_STREAM_BASE_URL:${AGNES_TEXT_BASE_URL:https://apihub.agnes-ai.com/v1}}
+      api-key: ${AGNES_TEXT_STREAM_API_KEY:${AGNES_TEXT_API_KEY:}}
+      model-name: ${AGNES_TEXT_STREAM_MODEL_NAME:${AGNES_TEXT_MODEL_NAME:agnes-2.0-flash}}
       max-tokens: 8192
       temperature: 0.7
       timeout: 300s
+
+# ========== Agnes 多模态媒体生成配置 ==========
+media:
+  agnes:
+    image:
+      base-url: ${AGNES_IMAGE_BASE_URL:https://apihub.agnes-ai.com}
+      api-key: ${AGNES_IMAGE_API_KEY:}
+      model-name: ${AGNES_IMAGE_MODEL_NAME:agnes-image-2.1-flash}
+      endpoint: /v1/images/generations
+    video:
+      base-url: ${AGNES_VIDEO_BASE_URL:https://apihub.agnes-ai.com}
+      api-key: ${AGNES_VIDEO_API_KEY:}
+      model-name: ${AGNES_VIDEO_MODEL_NAME:agnes-video-v2.0}
+      create-endpoint: /v1/videos
+      query-endpoint: /agnesapi
+      create-inline-poll: false       # 创建视频任务后不阻塞主流程，状态查询接口负责轮询
+      poll-attempts: ${AGNES_VIDEO_POLL_ATTEMPTS:6}
+      poll-interval-ms: ${AGNES_VIDEO_POLL_INTERVAL_MS:5000}
 
 # ========== LangGraph4j 配置（多智能体编排层） ==========
 langgraph4j:
@@ -202,5 +225,12 @@ edu:
     resource:
       quality-threshold: 0.7        # 质量阈值（低于此分触发重新生成）
       max-retries: 3                # 最大重试次数
+    review:
+      timeout-seconds: 12           # 质量审核单资源/多资源统一短超时，超时走规则兜底
+      parallelism: 3                # 质量审核并发数
+    rag:
+      vector-enabled: true           # 本地 embedding 向量检索，失败自动降级关键词召回
+      vector-candidate-limit: 80     # 向量索引候选知识片段数量，控制首次检索耗时
+      vector-min-score: 0.18         # 低相似度片段过滤阈值
     parallelism:
       resource-generation: 4        # 资源生成并行度

@@ -1,5 +1,6 @@
 package com.ruoyi.common.utils.file;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -71,7 +72,7 @@ public class MinioFileStorageServiceImpl implements FileStorageService
                 log.info("MinIO 存储桶 [{}] 已存在", bucket);
             }
             // 设置 bucket 公共读权限，允许浏览器直接通过 URL 加载图片（不携带 MinIO 认证凭证）
-            String policy = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::" + bucket + "/*\"]}]}";
+            String policy = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Deny\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::" + bucket + "/edu-chat/*\"]},{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::" + bucket + "/*\"]}]}";
             minioClient.setBucketPolicy(
                 SetBucketPolicyArgs.builder().bucket(bucket).config(policy).build());
         }
@@ -122,6 +123,29 @@ public class MinioFileStorageServiceImpl implements FileStorageService
                 .build());
 
         // 返回完整 HTTP URL
+        return endpoint + "/" + bucket + "/" + objectName;
+    }
+
+    @Override
+    public String uploadBytes(String baseDir, String fileName, byte[] content, String contentType) throws Exception
+    {
+        if (content == null || content.length == 0)
+        {
+            throw new IllegalArgumentException("上传内容不能为空");
+        }
+        String cleanBaseDir = normalizePath(baseDir, "ai-generated");
+        String cleanFileName = normalizePath(fileName, IdUtils.fastSimpleUUID() + extensionOf(contentType));
+        String objectName = cleanBaseDir + "/" + cleanFileName;
+
+        try (ByteArrayInputStream inputStream = new ByteArrayInputStream(content))
+        {
+            minioClient.putObject(PutObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(objectName)
+                    .contentType(Objects.requireNonNullElse(contentType, MediaType.APPLICATION_OCTET_STREAM_VALUE))
+                    .stream(inputStream, content.length, -1)
+                    .build());
+        }
         return endpoint + "/" + bucket + "/" + objectName;
     }
 
@@ -229,5 +253,30 @@ public class MinioFileStorageServiceImpl implements FileStorageService
     {
         String extension = FileUploadUtils.getExtension(file);
         return DateUtils.datePath() + "/" + IdUtils.fastSimpleUUID() + "." + extension;
+    }
+
+    private String normalizePath(String value, String fallback)
+    {
+        String path = value == null || value.isBlank() ? fallback : value.trim();
+        path = path.replace("\\", "/");
+        while (path.startsWith("/"))
+        {
+            path = path.substring(1);
+        }
+        while (path.endsWith("/"))
+        {
+            path = path.substring(0, path.length() - 1);
+        }
+        if (path.contains(".."))
+        {
+            throw new IllegalArgumentException("非法文件路径: " + value);
+        }
+        return path.isBlank() ? fallback : path;
+    }
+
+    private String extensionOf(String contentType)
+    {
+        String extension = MimeTypeUtils.getExtension(contentType);
+        return extension == null || extension.isBlank() ? ".bin" : "." + extension;
     }
 }

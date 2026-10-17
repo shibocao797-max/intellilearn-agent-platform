@@ -62,5 +62,5 @@ module.exports = {
   /**
    * 底部版权文本内容
    */
-  footerContent: 'Copyright © 2018-2026 RuoYi. All Rights Reserved.'
+  footerContent: '© 2026 智学协同教育智能体平台'
 }

@@ -21,11 +21,43 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="updateTime"      column="update_time"      />
     </resultMap>
 
+    <!-- Deliberately separate from QuizQuestionResult: learner endpoints must
+         never select or serialize answer/explanation before submission. -->
+    <resultMap type="com.ruoyi.system.domain.StudentQuizQuestion" id="StudentQuizQuestionResult">
+        <id     property="id"              column="id"               />
+        <result property="questionType"    column="question_type"    />
+        <result property="stem"            column="stem"             />
+        <result property="options"         column="options"          />
+        <result property="difficulty"      column="difficulty"       />
+        <result property="knowledgePoints" column="knowledge_points" />
+    </resultMap>
+
     <sql id="selectQuestionVo">
         select id, question_type, stem, options, answer, explanation,
                difficulty, knowledge_points, source, correct_rate, status,
                create_by, create_time, update_time
         from quiz_question
+    </sql>
+
+    <sql id="selectStudentQuestionVo">
+        select q.id, q.question_type, q.stem, q.options, q.difficulty, q.knowledge_points
+        from quiz_question q
+    </sql>
+
+    <sql id="studentQuestionFilters">
+        where q.status = '0'
+        <if test="query.keyword != null and query.keyword != ''">
+            and q.stem like concat('%', #{query.keyword}, '%')
+        </if>
+        <if test="query.questionType != null and query.questionType != ''">
+            and q.question_type = #{query.questionType}
+        </if>
+        <if test="query.difficulty != null and query.difficulty != ''">
+            and q.difficulty = #{query.difficulty}
+        </if>
+        <if test="query.knowledgePoint != null and query.knowledgePoint != ''">
+            and JSON_CONTAINS(q.knowledge_points, JSON_QUOTE(#{query.knowledgePoint}))
+        </if>
     </sql>
 
     <!-- 插入一道题目 -->
@@ -83,5 +115,44 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             update_time = sysdate()
         where id = #{id}
     </update>
+
+    <select id="selectStudentQuestions" resultMap="StudentQuizQuestionResult">
+        <include refid="selectStudentQuestionVo"/>
+        <include refid="studentQuestionFilters"/>
+        order by q.id desc
+        limit #{query.offset}, #{query.pageSize}
+    </select>
+
+    <select id="countStudentQuestions" resultType="long">
+        select count(1) from quiz_question q
+        <include refid="studentQuestionFilters"/>
+    </select>
+
+    <select id="selectStudentQuestionById" parameterType="Long" resultMap="StudentQuizQuestionResult">
+        <include refid="selectStudentQuestionVo"/>
+        where q.id = #{id} and q.status = '0'
+    </select>
+
+    <select id="selectStudentQuestionByIdIncludingDisabled" parameterType="Long" resultMap="StudentQuizQuestionResult">
+        <include refid="selectStudentQuestionVo"/>
+        where q.id = #{id}
+    </select>
+
+    <select id="selectStudentQuestionTypes" resultType="String">
+        select distinct question_type from quiz_question
+        where status = '0' and question_type is not null and question_type != ''
+        order by question_type
+    </select>
+
+    <select id="selectStudentDifficulties" resultType="String">
+        select distinct difficulty from quiz_question
+        where status = '0' and difficulty is not null and difficulty != ''
+        order by field(difficulty, 'easy', 'medium', 'hard'), difficulty
+    </select>
+
+    <select id="selectStudentKnowledgePointJsons" resultType="String">
+        select knowledge_points from quiz_question
+        where status = '0' and knowledge_points is not null
+    </select>
 
 </mapper>

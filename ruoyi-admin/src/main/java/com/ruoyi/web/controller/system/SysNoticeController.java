@@ -124,6 +124,24 @@ public class SysNoticeController extends BaseController
     }
 
     /**
+     * 仅从当前用户的最近通知中移除，不删除系统公告。
+     */
+    @PostMapping("/hide")
+    @ResponseBody
+    public AjaxResult hide(Long noticeId)
+    {
+        if (noticeId == null)
+        {
+            return error("通知编号不能为空");
+        }
+        if (!noticeReadService.hideNoticeForUser(noticeId, getUserId()))
+        {
+            return error("通知不存在或已不可见");
+        }
+        return success();
+    }
+
+    /**
      * 已读用户列表数据
      */
     @PreAuthorize("@ss.hasPermi('system:notice:list')")

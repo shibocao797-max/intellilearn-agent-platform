@@ -9,6 +9,7 @@
           <el-option label="思维导图" value="mindmap" />
           <el-option label="代码案例" value="code" />
           <el-option label="题库" value="quiz" />
+          <el-option label="教学动画" value="animation" />
           <el-option label="视频" value="video" />
         </el-select>
       </el-form-item>
@@ -57,15 +58,25 @@
     />
 
     <!-- 资源详情弹窗 -->
-    <el-dialog :title="detail.title" :visible.sync="detailVisible" width="80%" top="5vh">
-      <div class="resource-detail">
+    <el-dialog :title="detail.title" :visible.sync="detailVisible" width="80%" top="5vh" @closed="releaseAnimationFrame">
+      <div class="resource-detail" v-loading="detailLoading">
         <div class="detail-header">
           <el-tag :type="getTagType(detail.type)">{{ getResourceTypeName(detail.type) }}</el-tag>
           <span class="detail-time">{{ detail.createTime }}</span>
         </div>
+        <!-- 教学动画 -->
+        <div v-if="detail.type === 'animation'" class="detail-animation">
+          <iframe
+            v-if="animationFrameUrl"
+            :src="animationFrameUrl"
+            sandbox="allow-scripts"
+            frameborder="0"
+          ></iframe>
+          <el-empty v-else description="动画资源暂无可播放内容" />
+        </div>
         <!-- 思维导图图片 -->
-        <div v-if="detail.type === 'mindmap' && detail.tag === 'png_base64'" class="detail-image">
-          <img :src="detail.content" alt="思维导图" style="max-width: 100%;" />
+        <div v-else-if="detail.type === 'mindmap' && isMindmapImageTag(detail.tag)" class="detail-image">
+          <img :src="detail.sourceUrl || detail.coverUrl || detail.content" alt="思维导图" style="max-width: 100%;" />
         </div>
         <!-- 其他类型内容 -->
         <div v-else class="detail-content markdown-body" v-html="renderContent(detail)"></div>
@@ -75,13 +86,16 @@
 </template>
 
 <script>
-import { getResourceList } from '@/api/edu/resource'
+import { fetchAnimationHtml, getResourceDetail, getResourceList } from '@/api/edu/resource'
+import { sanitizeHtml } from '@/utils/sanitize'
 
 // 使用 require 导入 marked（兼容 webpack 4）
-const marked = require('marked')
+const markedLib = require('marked')
+const markedParser = markedLib.marked || markedLib.parse || markedLib
 
 // 配置 marked
-marked.setOptions({
+const setMarkedOptions = markedParser.setOptions || markedLib.setOptions
+if (setMarkedOptions) setMarkedOptions.call(markedParser, {
   breaks: true,
   gfm: true
 })
@@ -98,7 +112,9 @@ export default {
       resourceList: [],
       total: 0,
       detailVisible: false,
-      detail: {}
+      detailLoading: false,
+      detail: {},
+      animationFrameUrl: ''
     }
   },
   created() {
@@ -130,9 +146,31 @@ export default {
       this.loadResources()
     },
 
-    handleDetail(item) {
-      this.detail = item
+    async handleDetail(item) {
+      this.detail = { ...item }
       this.detailVisible = true
+      this.detailLoading = true
+      this.releaseAnimationFrame()
+
+      try {
+        const res = await getResourceDetail(item.id)
+        this.detail = res.data || item
+        if (this.detail.type === 'animation') {
+          const html = await fetchAnimationHtml(item.id)
+          this.animationFrameUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+        }
+      } catch (e) {
+        this.$message.error(e.message || '加载资源详情失败')
+      } finally {
+        this.detailLoading = false
+      }
+    },
+
+    releaseAnimationFrame() {
+      if (this.animationFrameUrl) {
+        URL.revokeObjectURL(this.animationFrameUrl)
+        this.animationFrameUrl = ''
+      }
     },
 
     getResourceIcon(type) {
@@ -141,6 +179,7 @@ export default {
         quiz: '📝',
         mindmap: '🧠',
         code: '💻',
+        animation: '🎬',
         video: '🎥'
       }
       return iconMap[type] || '📦'
@@ -152,6 +191,7 @@ export default {
         quiz: '题库',
         mindmap: '思维导图',
         code: '代码案例',
+        animation: '教学动画',
         video: '视频'
       }
       return typeMap[type] || type
@@ -163,6 +203,7 @@ export default {
         quiz: 'success',
         mindmap: 'warning',
         code: 'info',
+        animation: 'danger',
         video: 'danger'
       }
       return typeMap[type] || ''
@@ -176,8 +217,9 @@ export default {
     renderContent(detail) {
       if (!detail || !detail.content) return ''
       // 思维导图 Base64 图片
-      if (detail.type === 'mindmap' && detail.tag === 'png_base64') {
-        return `<img src="${detail.content}" alt="思维导图" style="max-width:100%;" />`
+      if (detail.type === 'mindmap' && this.isMindmapImageTag(detail.tag)) {
+        const src = detail.sourceUrl || detail.coverUrl || detail.content
+        return `<img src="${src}" alt="思维导图" style="max-width:100%;" />`
       }
       // 代码类型
       if (detail.type === 'code') {
@@ -185,6 +227,10 @@ export default {
       }
       // 默认 Markdown 渲染
       return this.renderMarkdown(detail.content)
+    },
+
+    isMindmapImageTag(tag) {
+      return typeof tag === 'string' && tag.split(',').includes('png_base64')
     },
 
     escapeHtml(text) {
@@ -198,10 +244,11 @@ export default {
     renderMarkdown(text) {
       if (!text) return ''
       try {
-        return marked(text)
+        const html = typeof markedParser === 'function' ? markedParser(text) : String(text)
+        return sanitizeHtml(html)
       } catch (e) {
         console.error('Markdown 渲染失败:', e)
-        return text.replace(/\n/g, '<br>')
+        return sanitizeHtml(String(text).replace(/\n/g, '<br>'))
       }
     }
   }
@@ -311,6 +358,18 @@ export default {
       max-width: 100%;
       border-radius: 8px;
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    }
+  }
+
+  .detail-animation {
+    height: 62vh;
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+      background: #fff;
     }
   }
 

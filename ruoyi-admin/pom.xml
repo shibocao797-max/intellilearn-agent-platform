@@ -42,6 +42,12 @@
             <artifactId>ruoyi-framework</artifactId>
         </dependency>
 
+        <!-- 系统业务模块：Controller 直接使用 AI Agent、资源、Mapper 等 system 包类型 -->
+        <dependency>
+            <groupId>com.ruoyi</groupId>
+            <artifactId>ruoyi-system</artifactId>
+        </dependency>
+
         <!-- 定时任务-->
         <dependency>
             <groupId>com.ruoyi</groupId>

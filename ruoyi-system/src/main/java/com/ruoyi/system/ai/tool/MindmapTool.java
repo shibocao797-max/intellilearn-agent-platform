@@ -27,6 +27,9 @@ public class MindmapTool {
     @Autowired
     private EduResourceMapper eduResourceMapper;
 
+    @Autowired
+    private ResourceTool resourceTool;
+
     /**
      * 将 LLM 生成的 PlantUML 源码渲染为 PNG 并保存到 edu_resource 表
      *
@@ -47,17 +50,23 @@ public class MindmapTool {
         } catch (Exception e) {
             log.error("PlantUML 渲染失败: title={}, userId={}", title, userId, e);
             // 降级：保存原始文本，前端将以文本文档模式展示
-            return saveResource(title, plantUmlCode, "text", userId);
+            return saveResource(title, plantUmlCode, null, "text", userId);
         }
 
         // 3. Base64 编码，前端可直接用 <img src="data:image/png;base64,..."> 展示
         String base64Png = "data:image/png;base64," +
                 Base64.getEncoder().encodeToString(pngStream.toByteArray());
+        String sourceUrl = "";
+        try {
+            sourceUrl = resourceTool.uploadFile("mindmap-" + userId + ".png", pngStream.toByteArray(), "image/png");
+        } catch (Exception e) {
+            log.warn("思维导图PNG上传失败，保留Base64展示: title={}, error={}", title, e.getMessage());
+        }
 
         log.info("PlantUML 思维导图渲染成功: title={}, userId={}, size={}KB",
                 title, userId, pngStream.size() / 1024);
 
-        return saveResource(title, base64Png, "png_base64", userId);
+        return saveResource(title, base64Png, sourceUrl, "png_base64", userId);
     }
 
     /**
@@ -85,14 +94,18 @@ public class MindmapTool {
      * @param contentType 内容类型标识：png_base64=Base64图片 text=纯文本
      * @param userId      用户ID
      */
-    private Long saveResource(String title, String content, String contentType, Long userId) {
+    private Long saveResource(String title, String content, String sourceUrl, String contentType, Long userId) {
         EduResource res = new EduResource();
         res.setTitle(title);
         res.setContent(content);
         res.setType("mindmap");
         res.setSource("internal");
+        if (sourceUrl != null && !sourceUrl.isBlank()) {
+            res.setSourceUrl(sourceUrl);
+            res.setCoverUrl(sourceUrl);
+        }
         res.setTag(contentType);  // 复用 tag 字段标记内容类型，前端据此判断展示方式
-        res.setStatus("0");
+        res.setStatus(ResourceTool.STATUS_REVIEWING);
         res.setCreateBy("AI");
         res.setUserId(userId);
         eduResourceMapper.insertResource(res);

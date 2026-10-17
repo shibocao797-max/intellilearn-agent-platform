@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduUserAccountProfileMapper">
+
+    <resultMap type="EduUserAccountProfile" id="EduUserAccountProfileResult">
+        <id property="id" column="id" />
+        <result property="userId" column="user_id" />
+        <result property="bio" column="bio" />
+        <result property="preferencesJson" column="preferences_json" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="selectAccountProfileVo">
+        select id, user_id, bio, preferences_json, create_time, update_time
+        from edu_user_account_profile
+    </sql>
+
+    <select id="selectByUserId" parameterType="Long" resultMap="EduUserAccountProfileResult">
+        <include refid="selectAccountProfileVo" />
+        where user_id = #{userId}
+        limit 1
+    </select>
+
+    <insert id="insertAccountProfile" parameterType="EduUserAccountProfile" useGeneratedKeys="true" keyProperty="id">
+        insert into edu_user_account_profile (
+            user_id,
+            bio,
+            preferences_json,
+            create_time,
+            update_time
+        ) values (
+            #{userId},
+            #{bio},
+            #{preferencesJson},
+            sysdate(),
+            sysdate()
+        )
+    </insert>
+
+    <update id="updateAccountProfileByUserId" parameterType="EduUserAccountProfile">
+        update edu_user_account_profile
+        set bio = #{bio},
+            preferences_json = #{preferencesJson},
+            update_time = sysdate()
+        where user_id = #{userId}
+    </update>
+
+</mapper>

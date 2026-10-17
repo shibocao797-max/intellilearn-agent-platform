@@ -14,6 +14,50 @@
         <result property="createTime" column="create_time"/>
     </resultMap>
 
+    <resultMap type="com.ruoyi.system.domain.QuizWrongQuestion" id="QuizWrongQuestionResult">
+        <id property="id" column="id"/>
+        <result property="questionType" column="question_type"/>
+        <result property="stem" column="stem"/>
+        <result property="options" column="options"/>
+        <result property="difficulty" column="difficulty"/>
+        <result property="knowledgePoints" column="knowledge_points"/>
+        <result property="wrongCount" column="wrong_count"/>
+        <result property="lastWrongAt" column="last_wrong_at"/>
+    </resultMap>
+
+    <sql id="latestWrongQuestionFrom">
+        from quiz_record latest
+        inner join (
+            select question_id, max(id) as latest_record_id
+            from quiz_record
+            where user_id = #{userId}
+            group by question_id
+        ) newest on newest.latest_record_id = latest.id
+        inner join quiz_question q on q.id = latest.question_id and q.status = '0'
+        left join (
+            select question_id, count(*) as wrong_count
+            from quiz_record
+            where user_id = #{userId} and is_correct = 0
+            group by question_id
+        ) wrongs on wrongs.question_id = latest.question_id
+    </sql>
+
+    <sql id="latestWrongQuestionFilters">
+        where latest.user_id = #{userId} and latest.is_correct = 0
+        <if test="query.keyword != null and query.keyword != ''">
+            and q.stem like concat('%', #{query.keyword}, '%')
+        </if>
+        <if test="query.questionType != null and query.questionType != ''">
+            and q.question_type = #{query.questionType}
+        </if>
+        <if test="query.difficulty != null and query.difficulty != ''">
+            and q.difficulty = #{query.difficulty}
+        </if>
+        <if test="query.knowledgePoint != null and query.knowledgePoint != ''">
+            and JSON_CONTAINS(q.knowledge_points, JSON_QUOTE(#{query.knowledgePoint}))
+        </if>
+    </sql>
+
     <insert id="insertRecord" parameterType="QuizRecord" useGeneratedKeys="true" keyProperty="id">
         insert into quiz_record (user_id, question_id, session_id, user_answer, is_correct, score, time_spent_sec, answer_time, create_time)
         values (#{userId}, #{questionId}, #{sessionId}, #{userAnswer}, #{isCorrect}, #{score}, #{timeSpentSec}, #{answerTime}, sysdate())
@@ -23,14 +67,156 @@
         select * from quiz_record where user_id = #{userId} order by create_time desc limit #{limit}
     </select>
 
+    <select id="selectByUserInRange" resultMap="QuizRecordResult">
+        select * from quiz_record
+        where user_id = #{userId}
+          and coalesce(answer_time, create_time) >= date_sub(curdate(), interval (#{days} - 1) day)
+        order by coalesce(answer_time, create_time) desc, id desc
+        limit #{limit}
+    </select>
+
     <select id="selectByUserAndQuestion" resultMap="QuizRecordResult">
         select * from quiz_record where user_id = #{userId} and question_id = #{questionId} order by create_time desc
     </select>
 
     <select id="selectStats" resultType="java.util.Map">
         select count(*) as total,
-               sum(case when is_correct = 1 then 1 else 0 end) as correct,
-               avg(time_spent_sec) as avgTimeSec
-        from quiz_record where user_id = #{userId}
+               coalesce(sum(case when qr.is_correct = 1 then 1 else 0 end), 0) as correct,
+               coalesce(round(avg(qr.time_spent_sec), 0), 0) as avgTimeSec,
+               count(*) as answeredCount,
+               coalesce(sum(case when qr.is_correct = 1 then 1 else 0 end), 0) as correctCount,
+               coalesce(round(
+                   100.0 * sum(case when qr.is_correct = 1 then 1 else 0 end) / nullif(count(*), 0),
+                   1
+               ), 0) as correctRate,
+               coalesce(round(avg(qr.time_spent_sec), 0), 0) as averageSeconds,
+               coalesce(sum(case
+                   when question.question_type in ('single_choice', 'multi_choice', 'fill_blank')
+                    and qr.is_correct is not null
+                    and coalesce(practice_item.pending_review, 0) = 0
+                   then 1 else 0 end), 0) as objectiveAnsweredCount,
+               coalesce(sum(case
+                   when question.question_type in ('single_choice', 'multi_choice', 'fill_blank')
+                    and qr.is_correct = 1
+                    and coalesce(practice_item.pending_review, 0) = 0
+                   then 1 else 0 end), 0) as objectiveCorrectCount,
+               coalesce(round(
+                   100.0 * sum(case
+                       when question.question_type in ('single_choice', 'multi_choice', 'fill_blank')
+                        and qr.is_correct = 1
+                        and coalesce(practice_item.pending_review, 0) = 0
+                       then 1 else 0 end)
+                   / nullif(sum(case
+                       when question.question_type in ('single_choice', 'multi_choice', 'fill_blank')
+                        and qr.is_correct is not null
+                        and coalesce(practice_item.pending_review, 0) = 0
+                       then 1 else 0 end), 0),
+                   1
+               ), 0) as objectiveCorrectRate,
+               coalesce(sum(case
+                   when qr.is_correct is null or coalesce(practice_item.pending_review, 0) = 1
+                   then 1 else 0 end), 0) as pendingReviewCount
+        from quiz_record qr
+        left join quiz_question question on question.id = qr.question_id
+        left join (
+            select quiz_record_id, max(pending_review) as pending_review
+            from quiz_practice_item
+            where quiz_record_id is not null
+            group by quiz_record_id
+        ) practice_item on practice_item.quiz_record_id = qr.id
+        where qr.user_id = #{userId}
+    </select>
+
+    <select id="selectStatsInRange" resultType="java.util.Map">
+        select count(*) as total,
+               coalesce(sum(case when qr.is_correct = 1 then 1 else 0 end), 0) as correct,
+               coalesce(round(avg(qr.time_spent_sec), 0), 0) as avgTimeSec,
+               count(*) as answeredCount,
+               coalesce(sum(case when qr.is_correct = 1 then 1 else 0 end), 0) as correctCount,
+               coalesce(round(
+                   100.0 * sum(case when qr.is_correct = 1 then 1 else 0 end) / nullif(count(*), 0),
+                   1
+               ), 0) as correctRate,
+               coalesce(round(avg(qr.time_spent_sec), 0), 0) as averageSeconds,
+               coalesce(sum(case
+                   when question.question_type in ('single_choice', 'multi_choice', 'fill_blank')
+                    and qr.is_correct is not null
+                    and coalesce(practice_item.pending_review, 0) = 0
+                   then 1 else 0 end), 0) as objectiveAnsweredCount,
+               coalesce(sum(case
+                   when question.question_type in ('single_choice', 'multi_choice', 'fill_blank')
+                    and qr.is_correct = 1
+                    and coalesce(practice_item.pending_review, 0) = 0
+                   then 1 else 0 end), 0) as objectiveCorrectCount,
+               coalesce(round(
+                   100.0 * sum(case
+                       when question.question_type in ('single_choice', 'multi_choice', 'fill_blank')
+                        and qr.is_correct = 1
+                        and coalesce(practice_item.pending_review, 0) = 0
+                       then 1 else 0 end)
+                   / nullif(sum(case
+                       when question.question_type in ('single_choice', 'multi_choice', 'fill_blank')
+                        and qr.is_correct is not null
+                        and coalesce(practice_item.pending_review, 0) = 0
+                       then 1 else 0 end), 0),
+                   1
+               ), 0) as objectiveCorrectRate,
+               coalesce(sum(case
+                   when qr.is_correct is null or coalesce(practice_item.pending_review, 0) = 1
+                   then 1 else 0 end), 0) as pendingReviewCount
+        from quiz_record qr
+        left join quiz_question question on question.id = qr.question_id
+        left join (
+            select quiz_record_id, max(pending_review) as pending_review
+            from quiz_practice_item
+            where quiz_record_id is not null
+            group by quiz_record_id
+        ) practice_item on practice_item.quiz_record_id = qr.id
+        where qr.user_id = #{userId}
+          and coalesce(qr.answer_time, qr.create_time) >= date_sub(curdate(), interval (#{days} - 1) day)
+    </select>
+
+    <select id="selectPerformanceTrend" resultType="java.util.Map">
+        select date(coalesce(qr.answer_time, qr.create_time)) as date,
+               coalesce(sum(case
+                   when question.question_type in ('single_choice', 'multi_choice', 'fill_blank')
+                    and qr.is_correct is not null
+                    and coalesce(practice_item.pending_review, 0) = 0
+                   then 1 else 0 end), 0) as assessed_count,
+               coalesce(sum(case
+                   when question.question_type in ('single_choice', 'multi_choice', 'fill_blank')
+                    and qr.is_correct = 1
+                    and coalesce(practice_item.pending_review, 0) = 0
+                   then 1 else 0 end), 0) as correct_count
+        from quiz_record qr
+        left join quiz_question question on question.id = qr.question_id
+        left join (
+            select quiz_record_id, max(pending_review) as pending_review
+            from quiz_practice_item
+            where quiz_record_id is not null
+            group by quiz_record_id
+        ) practice_item on practice_item.quiz_record_id = qr.id
+        where qr.user_id = #{userId}
+          and coalesce(qr.answer_time, qr.create_time) >= date_sub(curdate(), interval (#{days} - 1) day)
+        group by date(coalesce(qr.answer_time, qr.create_time))
+        order by date asc
+    </select>
+
+    <!-- A wrong question is defined by the learner's latest submitted record,
+         not by whether it was ever answered incorrectly in the past. -->
+    <select id="selectLatestWrongQuestions" resultMap="QuizWrongQuestionResult">
+        select q.id, q.question_type, q.stem, q.options, q.difficulty, q.knowledge_points,
+               coalesce(wrongs.wrong_count, 0) as wrong_count,
+               coalesce(latest.answer_time, latest.create_time) as last_wrong_at
+        <include refid="latestWrongQuestionFrom"/>
+        <include refid="latestWrongQuestionFilters"/>
+        order by last_wrong_at desc, latest.id desc
+        limit #{query.offset}, #{query.pageSize}
+    </select>
+
+    <select id="countLatestWrongQuestions" resultType="long">
+        select count(1)
+        <include refid="latestWrongQuestionFrom"/>
+        <include refid="latestWrongQuestionFilters"/>
     </select>
 </mapper>

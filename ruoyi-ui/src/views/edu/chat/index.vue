@@ -215,6 +215,17 @@
             @keydown.enter.native.exact="handleSend"
           />
           <el-button
+            v-if="speechSupported"
+            :class="['mic-btn', { recording: isRecording, processing: isSpeechConnecting && !isRecording }]"
+            :type="isRecording ? 'danger' : 'default'"
+            :icon="isRecording ? 'el-icon-turn-off-microphone' : 'el-icon-microphone'"
+            :loading="isSpeechConnecting"
+            :disabled="isStreaming"
+            @click="toggleRecording"
+          >
+            {{ isRecording ? '结束录音' : '语音输入' }}
+          </el-button>
+          <el-button
             class="send-btn"
             type="primary"
             icon="el-icon-s-promotion"
@@ -225,15 +236,32 @@
             {{ isStreaming ? '处理中' : '发送' }}
           </el-button>
         </div>
+        <div
+          v-if="speechStatusText"
+          :class="['speech-status', { recording: isRecording, processing: isSpeechConnecting && !isRecording }]"
+        >
+          <span class="status-dot"></span>
+          <span>{{ speechStatusText }}</span>
+        </div>
       </div>
     </div>
 
     <!-- 资源详情弹窗 -->
-    <el-dialog :title="resourceDialogTitle" :visible.sync="resourceDialogVisible" width="80%" top="5vh">
+    <el-dialog :title="resourceDialogTitle" :visible.sync="resourceDialogVisible" width="80%" top="5vh" @closed="releaseAnimationFrame">
       <div class="resource-detail" v-loading="resourceDialogLoading">
+        <!-- 动画资源用 iframe 沙箱播放，避免直接 v-html 注入完整 HTML -->
+        <div v-if="resourceDialogType === 'animation'" class="detail-animation">
+          <iframe
+            v-if="animationFrameUrl"
+            :src="animationFrameUrl"
+            sandbox="allow-scripts"
+            frameborder="0"
+          ></iframe>
+          <el-empty v-else description="动画资源暂无可播放内容" />
+        </div>
         <!-- 思维导图图片 -->
-        <div v-if="resourceDialogType === 'mindmap' && resourceDialogTag === 'png_base64'" class="detail-image">
-          <img :src="resourceDialogContent" alt="思维导图" style="max-width: 100%;" />
+        <div v-else-if="resourceDialogType === 'mindmap' && isMindmapImageTag(resourceDialogTag)" class="detail-image">
+          <img :src="resourceDialogImageSrc || resourceDialogContent" alt="思维导图" style="max-width: 100%;" />
         </div>
         <!-- 代码类型 -->
         <div v-else-if="resourceDialogType === 'code'" class="detail-code">
@@ -247,14 +275,17 @@
 </template>
 
 <script>
-import { getSessions, newSession, deleteSession, getConversation } from '@/api/edu/agent'
-import { getResourceDetail } from '@/api/edu/resource'
+import { getSessions, newSession, deleteSession, getConversation, chatStream, transcribeSpeech } from '@/api/edu/agent'
+import { fetchAnimationHtml, getResourceDetail } from '@/api/edu/resource'
+import { sanitizeHtml } from '@/utils/sanitize'
 
 // 使用 require 导入 marked（兼容 webpack 4）
-const marked = require('marked')
+const markedLib = require('marked')
+const markedParser = markedLib.marked || markedLib.parse || markedLib
 
 // 配置 marked
-marked.setOptions({
+const setMarkedOptions = markedParser.setOptions || markedLib.setOptions
+if (setMarkedOptions) setMarkedOptions.call(markedParser, {
   breaks: true,
   gfm: true
 })
@@ -267,19 +298,29 @@ export default {
       currentSessionId: '',
       messages: [],
       inputMessage: '',
+      isRecording: false,
+      isSpeechConnecting: false,
+      speechSupported: false,
+      speechStatusText: '',
+      speechChunks: [],
+      speechAudioContext: null,
+      speechMediaStream: null,
+      speechProcessor: null,
+      speechSource: null,
       isStreaming: false,
       streamingText: '',
       streamingPhase: '',
       streamingAgents: [],
       streamingResources: [],
       _sseController: null,
-      _currentEvent: null,
       resourceDialogVisible: false,
       resourceDialogTitle: '',
       resourceDialogContent: '',
+      resourceDialogImageSrc: '',
       resourceDialogType: '',
       resourceDialogTag: '',
       resourceDialogLoading: false,
+      animationFrameUrl: '',
       agentList: [
         { name: '文本回复', type: '', icon: '💬' },
         { name: '文档生成', type: 'success', icon: '📄' },
@@ -290,12 +331,159 @@ export default {
     }
   },
   created() {
+    this.speechSupported = this.checkSpeechSupport()
     this.loadSessions()
   },
   beforeDestroy() {
     this.closeSSE()
+    this.stopRecording({ keepText: true })
   },
   methods: {
+    checkSpeechSupport() {
+      return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && (window.AudioContext || window.webkitAudioContext))
+    },
+
+    async toggleRecording() {
+      if (!this.speechSupported || this.isStreaming || this.isSpeechConnecting) return
+      if (this.isRecording) {
+        this.stopRecording({ keepText: true })
+        return
+      }
+      await this.startRecording()
+    },
+
+    async startRecording() {
+      this.speechChunks = []
+      this.isSpeechConnecting = true
+      this.speechStatusText = '正在准备麦克风...'
+      try {
+        await this.openMicrophone()
+        this.isRecording = true
+        this.speechStatusText = '正在录音，点击“结束录音”完成输入'
+      } catch (err) {
+        this.cleanupAudio()
+        this.speechStatusText = ''
+        this.$message.error(err.message || '启动语音输入失败')
+      } finally {
+        this.isSpeechConnecting = false
+      }
+    },
+
+    async openMicrophone() {
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const audioContext = new AudioContextCtor()
+      const source = audioContext.createMediaStreamSource(mediaStream)
+      const processor = audioContext.createScriptProcessor(2048, 1, 1)
+
+      processor.onaudioprocess = event => {
+        if (!this.isRecording) return
+        const channel = event.inputBuffer.getChannelData(0)
+        const pcm = this.floatTo16BitPCM(this.downsampleBuffer(channel, audioContext.sampleRate, 16000))
+        if (pcm.byteLength > 0) {
+          this.speechChunks.push(new Int16Array(pcm.slice(0)))
+        }
+      }
+
+      source.connect(processor)
+      processor.connect(audioContext.destination)
+
+      this.speechMediaStream = mediaStream
+      this.speechAudioContext = audioContext
+      this.speechSource = source
+      this.speechProcessor = processor
+    },
+
+    stopRecording({ keepText } = { keepText: true }) {
+      const recordedChunks = this.speechChunks.slice()
+      this.speechChunks = []
+      this.isRecording = false
+      this.isSpeechConnecting = false
+      this.cleanupAudio()
+      if (!keepText) {
+        this.inputMessage = ''
+      }
+      if (recordedChunks.length) {
+        this.isSpeechConnecting = true
+        this.speechStatusText = '录音已结束，正在识别语音...'
+        const samples = this.mergePcmChunks(recordedChunks)
+        const audioData = this.encodeWavBase64(samples, 16000)
+        return transcribeSpeech({ audioData, mimeType: 'audio/wav' })
+          .then(res => {
+            const text = (((res || {}).data || {}).text || '').trim()
+            if (text) {
+              this.inputMessage = this.inputMessage ? `${this.inputMessage} ${text}` : text
+              this.speechStatusText = '语音已转成文字，可直接发送'
+            } else {
+              this.speechStatusText = ''
+              this.$message.warning('未识别到有效语音内容')
+            }
+          })
+          .catch(err => {
+            this.speechStatusText = ''
+            this.$message.error((err && err.message) || '语音识别失败，请重试')
+          })
+          .finally(() => {
+            this.isSpeechConnecting = false
+          })
+      }
+      this.speechStatusText = ''
+    },
+
+    cleanupAudio() {
+      if (this.speechProcessor) {
+        this.speechProcessor.disconnect()
+        this.speechProcessor.onaudioprocess = null
+        this.speechProcessor = null
+      }
+      if (this.speechSource) {
+        this.speechSource.disconnect()
+        this.speechSource = null
+      }
+      if (this.speechMediaStream) {
+        this.speechMediaStream.getTracks().forEach(track => track.stop())
+        this.speechMediaStream = null
+      }
+      if (this.speechAudioContext) {
+        this.speechAudioContext.close()
+        this.speechAudioContext = null
+      }
+    },
+
+    downsampleBuffer(buffer, inputRate, targetRate) {
+      if (inputRate === targetRate) {
+        return buffer
+      }
+      const sampleRateRatio = inputRate / targetRate
+      const newLength = Math.round(buffer.length / sampleRateRatio)
+      const result = new Float32Array(newLength)
+      let offsetResult = 0
+      let offsetBuffer = 0
+      while (offsetResult < result.length) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio)
+        let accum = 0
+        let count = 0
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+          accum += buffer[i]
+          count++
+        }
+        result[offsetResult] = count > 0 ? accum / count : 0
+        offsetResult++
+        offsetBuffer = nextOffsetBuffer
+      }
+      return result
+    },
+
+    floatTo16BitPCM(float32Array) {
+      const pcmBuffer = new ArrayBuffer(float32Array.length * 2)
+      const view = new DataView(pcmBuffer)
+      for (let i = 0; i < float32Array.length; i++) {
+        let sample = Math.max(-1, Math.min(1, float32Array[i]))
+        sample = sample < 0 ? sample * 0x8000 : sample * 0x7fff
+        view.setInt16(i * 2, sample, true)
+      }
+      return pcmBuffer
+    },
     // 加载会话列表
     async loadSessions() {
       try {
@@ -370,6 +558,9 @@ export default {
     // 发送消息
     async handleSend(e) {
       if (e) e.preventDefault()
+      if (this.isRecording || this.isSpeechConnecting) {
+        await this.stopRecording({ keepText: true })
+      }
       const message = this.inputMessage.trim()
       if (!message || this.isStreaming) return
 
@@ -395,126 +586,137 @@ export default {
       this.streamingAgents = []
       this.streamingResources = []
 
-      const token = this.$store.getters.token
-      const baseURL = process.env.VUE_APP_BASE_API
-      const url = `${baseURL}/edu/ai/chat/stream`
-
-      const controller = new AbortController()
-
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + token
-        },
-        body: JSON.stringify({
-          message: message,
-          sessionId: this.currentSessionId
-        }),
-        signal: controller.signal
-      }).then(response => {
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-
-        const read = () => {
-          reader.read().then(({ done, value }) => {
-            if (done) {
-              this.finishStreaming()
-              return
-            }
-
-            const text = decoder.decode(value, { stream: true })
-            this.processSSEData(text)
-            read()
-          }).catch(err => {
-            if (err.name !== 'AbortError') {
-              console.error('SSE 读取错误', err)
-            }
-            this.finishStreaming()
-          })
+      const stream = chatStream({
+        message: message,
+        sessionId: this.currentSessionId
+      }, {
+        onEvent: this.processSSEEvent,
+        onDone: this.finishStreaming,
+        onError: err => {
+          console.error('SSE 请求错误', err)
+          this.$message.error('AI 流式连接异常')
+          this.finishStreaming()
         }
-
-        read()
-      }).catch(err => {
-        console.error('SSE 请求错误', err)
-        this.finishStreaming()
       })
 
-      this._sseController = controller
+      this._sseController = stream
     },
 
-    // 处理 SSE 数据
-    processSSEData(rawData) {
-      const lines = rawData.split('\n')
+    // 处理单个 SSE 事件
+    processSSEEvent(eventName, data) {
+      switch (eventName) {
+        case 'token':
+          this.streamingText += data
+          this.streamingPhase = 'GENERATING'
+          this.scrollToBottom()
+          break
 
-      for (const line of lines) {
-        if (line.startsWith('event:')) {
-          this._currentEvent = line.substring(6).trim()
-        } else if (line.startsWith('data:') && this._currentEvent) {
-          const data = line.substring(5).trim()
+        case 'tokenDone':
+          break
 
-          switch (this._currentEvent) {
-            case 'token':
-              this.streamingText += data
-              this.streamingPhase = 'GENERATING'
-              this.scrollToBottom()
-              break
+        case 'phase':
+          this.streamingPhase = data
+          break
 
-            case 'tokenDone':
-              break
+        case 'intent':
+          try {
+            const intentData = JSON.parse(data)
+            this.streamingPhase = 'INTENT_DONE'
+            console.log('意图识别:', intentData)
+          } catch (e) {}
+          break
 
-            case 'phase':
-              this.streamingPhase = data
-              break
+        case 'selectedAgents':
+          try {
+            const agents = JSON.parse(data)
+            this.streamingAgents = agents.map(name => ({
+              name: name,
+              displayName: this.getAgentDisplayName(name),
+              status: 'running'
+            }))
+            this.streamingPhase = 'AGENTS_RUNNING'
+          } catch (e) {}
+          break
 
-            case 'intent':
-              try {
-                const intentData = JSON.parse(data)
-                this.streamingPhase = 'INTENT_DONE'
-                console.log('意图识别:', intentData)
-              } catch (e) {}
-              break
+        case 'agentProgress':
+          try {
+            const progress = JSON.parse(data)
+            const agentName = progress.agentName || progress.name
+            if (!agentName) break
 
-            case 'selectedAgents':
-              try {
-                const agents = JSON.parse(data)
-                this.streamingAgents = agents.map(name => ({
-                  name: name,
-                  displayName: this.getAgentDisplayName(name),
-                  status: 'running'
-                }))
-                this.streamingPhase = 'AGENTS_RUNNING'
-              } catch (e) {}
-              break
+            const normalizedStatus = progress.status === 'revised'
+              ? 'completed'
+              : (progress.status || 'running')
+            const agent = this.streamingAgents.find(a => a.name === agentName)
 
-            case 'resource':
-              try {
-                const resource = JSON.parse(data)
+            if (agent) {
+              this.$set(agent, 'displayName', progress.displayName || agent.displayName || this.getAgentDisplayName(agentName))
+              this.$set(agent, 'status', normalizedStatus)
+              if (progress.durationMs !== undefined && progress.durationMs !== null) {
+                this.$set(agent, 'durationMs', progress.durationMs)
+              }
+            } else {
+              const newAgent = {
+                name: agentName,
+                displayName: progress.displayName || this.getAgentDisplayName(agentName),
+                status: normalizedStatus
+              }
+              if (progress.durationMs !== undefined && progress.durationMs !== null) {
+                newAgent.durationMs = progress.durationMs
+              }
+              this.streamingAgents.push(newAgent)
+            }
+            this.streamingPhase = 'AGENTS_RUNNING'
+          } catch (e) {}
+          break
+
+        case 'resource':
+        case 'revisionResource':
+          try {
+            const resource = JSON.parse(data)
+            if (eventName === 'revisionResource' && resource.revisionOf) {
+              const oldIndex = this.streamingResources.findIndex(item =>
+                item.persistedId === resource.revisionOf || item.resourceId === resource.revisionOf || item.id === resource.revisionOf
+              )
+              if (oldIndex >= 0) {
+                this.$set(this.streamingResources, oldIndex, resource)
+              } else {
                 this.streamingResources.push(resource)
-                const agent = this.streamingAgents.find(a => a.name === resource.agentName)
-                if (agent) {
-                  agent.status = 'completed'
-                  agent.durationMs = resource.durationMs
-                }
-              } catch (e) {}
-              break
+              }
+            } else {
+              this.streamingResources.push(resource)
+            }
+            const agent = this.streamingAgents.find(a => a.name === resource.agentName)
+            if (agent) {
+              this.$set(agent, 'status', 'completed')
+              if (resource.durationMs !== undefined && resource.durationMs !== null) {
+                this.$set(agent, 'durationMs', resource.durationMs)
+              }
+            }
+          } catch (e) {}
+          break
 
-            case 'profile':
-              this.streamingPhase = 'PROFILE_UPDATED'
-              break
+        case 'agentMessage':
+        case 'review':
+        case 'revisionStart':
+        case 'revisionDone':
+        case 'learningPath':
+        case 'resourcePlan':
+        case 'finalRecommendations':
+          break
 
-            case 'done':
-              this.finishStreaming()
-              break
+        case 'profile':
+          this.streamingPhase = 'PROFILE_UPDATED'
+          break
 
-            case 'error':
-              this.$message.error(data || 'AI 处理失败')
-              this.finishStreaming()
-              break
-          }
+        case 'done':
+          this.finishStreaming()
+          break
 
-          this._currentEvent = null
-        }
+        case 'error':
+          this.$message.error(data || 'AI 处理失败')
+          this.finishStreaming()
+          break
       }
     },
 
@@ -538,6 +740,7 @@ export default {
       this.streamingPhase = ''
       this.streamingAgents = []
       this.streamingResources = []
+      this._sseController = null
       this.scrollToBottom()
     },
 
@@ -551,25 +754,44 @@ export default {
 
     // 打开资源详情
     async openResource(res) {
-      if (!res.persistedId) return
+      const rawId = res.persistedId || res.resourceId || res.id
+      if (!rawId) return
 
-      const id = res.persistedId.split(':').pop()
-      this.resourceDialogTitle = res.displayName || '资源详情'
+      const id = String(rawId).split(':').pop()
+      this.resourceDialogTitle = res.displayName || res.title || '资源详情'
       this.resourceDialogContent = ''
-      this.resourceDialogType = res.resourceType || ''
+      this.resourceDialogImageSrc = ''
+      this.resourceDialogType = res.resourceType || res.type || ''
       this.resourceDialogTag = ''
       this.resourceDialogVisible = true
       this.resourceDialogLoading = true
+      this.releaseAnimationFrame()
 
       try {
         const detail = await getResourceDetail(id)
-        this.resourceDialogContent = detail.data.content || '暂无内容'
-        this.resourceDialogTag = detail.data.tag || ''
+        const data = detail.data || {}
+        this.resourceDialogType = data.type || this.resourceDialogType
+        this.resourceDialogContent = data.content || '暂无内容'
+        this.resourceDialogImageSrc = data.sourceUrl || data.coverUrl || ''
+        this.resourceDialogTag = data.tag || ''
+
+        if (this.resourceDialogType === 'animation') {
+          const html = await fetchAnimationHtml(id)
+          this.animationFrameUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+        }
       } catch (e) {
         this.resourceDialogContent = '加载失败'
+        this.resourceDialogImageSrc = ''
         this.$message.error('加载资源详情失败')
       } finally {
         this.resourceDialogLoading = false
+      }
+    },
+
+    releaseAnimationFrame() {
+      if (this.animationFrameUrl) {
+        URL.revokeObjectURL(this.animationFrameUrl)
+        this.animationFrameUrl = ''
       }
     },
 
@@ -577,11 +799,16 @@ export default {
     renderMarkdown(text) {
       if (!text) return ''
       try {
-        return marked(text)
+        const html = typeof markedParser === 'function' ? markedParser(text) : String(text)
+        return sanitizeHtml(html)
       } catch (e) {
         console.error('Markdown 渲染失败:', e)
-        return text.replace(/\n/g, '<br>')
+        return sanitizeHtml(String(text).replace(/\n/g, '<br>'))
       }
+    },
+
+    isMindmapImageTag(tag) {
+      return typeof tag === 'string' && tag.split(',').includes('png_base64')
     },
 
     // 滚动到底部
@@ -618,6 +845,7 @@ export default {
         quizGen: '题库生成 Agent',
         mindmapGen: '思维导图 Agent',
         codeGen: '代码案例 Agent',
+        animationGen: '教学动画 Agent',
         videoGen: '视频生成 Agent'
       }
       return nameMap[name] || name
@@ -630,6 +858,7 @@ export default {
         quiz: '📝',
         mindmap: '🧠',
         code: '💻',
+        animation: '🎬',
         video: '🎥'
       }
       return iconMap[type] || '📦'
@@ -642,6 +871,7 @@ export default {
         quiz: '练习题库',
         mindmap: '思维导图',
         code: '代码案例',
+        animation: '教学动画',
         video: '教学视频'
       }
       return typeMap[type] || type
@@ -654,6 +884,7 @@ export default {
         quiz: 'success',
         mindmap: 'warning',
         code: 'info',
+        animation: 'danger',
         video: 'danger'
       }
       return typeMap[type] || ''
@@ -1163,10 +1394,90 @@ export default {
     align-items: flex-end;
   }
 
+  .mic-btn,
   .send-btn {
     height: 56px;
     padding: 0 24px;
     font-size: 16px;
+  }
+
+  .mic-btn {
+    min-width: 132px;
+    transition: all 0.2s ease;
+
+    &.recording {
+      background: #ff4d4f;
+      border-color: #ff4d4f;
+      color: #fff;
+      box-shadow: 0 10px 24px rgba(255, 77, 79, 0.24);
+      animation: micPulse 1.4s ease-in-out infinite;
+    }
+
+    &.processing {
+      color: #1677ff;
+      border-color: #b6d4fe;
+      background: #f3f8ff;
+    }
+  }
+
+  .speech-status {
+    margin-top: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    color: #666;
+    background: #f5f7fa;
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      flex: 0 0 auto;
+    }
+
+    &.recording {
+      color: #d9363e;
+      background: #fff1f0;
+
+      .status-dot {
+        animation: dotPulse 1.1s ease-in-out infinite;
+      }
+    }
+
+    &.processing {
+      color: #1677ff;
+      background: #f3f8ff;
+    }
+  }
+}
+
+@keyframes micPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 10px 24px rgba(255, 77, 79, 0.24);
+  }
+
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 14px 30px rgba(255, 77, 79, 0.34);
+  }
+}
+
+@keyframes dotPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.45;
+    transform: scale(1.18);
   }
 }
 
@@ -1199,6 +1510,18 @@ export default {
         font-size: 14px;
         line-height: 1.6;
       }
+    }
+  }
+
+  .detail-animation {
+    height: 62vh;
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+      background: #fff;
     }
   }
 

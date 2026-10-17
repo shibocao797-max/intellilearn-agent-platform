@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.LearnerProfileEvidenceMapper">
+    <resultMap type="LearnerProfileEvidence" id="EvidenceResult">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="profileId" column="profile_id"/>
+        <result property="profileVersion" column="profile_version"/>
+        <result property="dimensionKey" column="dimension_key"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="sourceRef" column="source_ref"/>
+        <result property="excerpt" column="excerpt"/>
+        <result property="confidence" column="confidence"/>
+        <result property="evidenceStatus" column="evidence_status"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+    <insert id="insertEvidence" parameterType="LearnerProfileEvidence" useGeneratedKeys="true" keyProperty="id">
+        insert into learner_profile_evidence (user_id, profile_id, profile_version, dimension_key, source_type, source_ref, excerpt, confidence, evidence_status)
+        values (#{userId}, #{profileId}, #{profileVersion}, #{dimensionKey}, #{sourceType}, #{sourceRef}, #{excerpt}, #{confidence}, #{evidenceStatus})
+    </insert>
+    <select id="selectEvidenceByProfile" resultMap="EvidenceResult">
+        select id, user_id, profile_id, profile_version, dimension_key, source_type, source_ref, excerpt, confidence, evidence_status, create_time
+        from learner_profile_evidence
+        where user_id = #{userId} and profile_id = #{profileId} and profile_version = #{profileVersion}
+        order by create_time desc limit 50
+    </select>
+</mapper>

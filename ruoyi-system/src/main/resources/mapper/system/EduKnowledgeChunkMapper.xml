@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduKnowledgeChunkMapper">
+
+    <resultMap type="EduKnowledgeChunk" id="KnowledgeChunkResult">
+        <id     property="id"           column="id"            />
+        <result property="title"        column="title"         />
+        <result property="subject"      column="subject"       />
+        <result property="gradeLevel"   column="grade_level"   />
+        <result property="sourceType"   column="source_type"   />
+        <result property="sourceName"   column="source_name"   />
+        <result property="sourceUrl"    column="source_url"    />
+        <result property="chunkText"    column="chunk_text"    />
+        <result property="chunkIndex"   column="chunk_index"   />
+        <result property="tags"         column="tags"          />
+        <result property="trustLevel"   column="trust_level"   />
+        <result property="contentHash"  column="content_hash"  />
+        <result property="enabled"      column="enabled"       />
+        <result property="createTime"   column="create_time"   />
+        <result property="updateTime"   column="update_time"   />
+    </resultMap>
+
+    <sql id="selectKnowledgeChunkVo">
+        select id, title, subject, grade_level, source_type, source_name, source_url,
+               chunk_text, chunk_index, tags, trust_level, content_hash, enabled,
+               create_time, update_time
+        from edu_knowledge_chunk
+    </sql>
+
+    <select id="selectKnowledgeChunkList" parameterType="EduKnowledgeChunk" resultMap="KnowledgeChunkResult">
+        <include refid="selectKnowledgeChunkVo"/>
+        <where>
+            <if test="title != null and title != ''">
+                AND title like concat('%', #{title}, '%')
+            </if>
+            <if test="subject != null and subject != ''">
+                AND subject = #{subject}
+            </if>
+            <if test="sourceType != null and sourceType != ''">
+                AND source_type = #{sourceType}
+            </if>
+            <if test="tags != null and tags != ''">
+                AND tags like concat('%', #{tags}, '%')
+            </if>
+            <if test="trustLevel != null and trustLevel != ''">
+                AND trust_level = #{trustLevel}
+            </if>
+            <if test="enabled != null and enabled != ''">
+                AND enabled = #{enabled}
+            </if>
+        </where>
+        order by id desc
+    </select>
+
+    <select id="searchKnowledgeChunks" resultMap="KnowledgeChunkResult">
+        <include refid="selectKnowledgeChunkVo"/>
+        where enabled = '0'
+        <if test="keywords != null and keywords.size() > 0">
+            and (
+            <foreach collection="keywords" item="keyword" separator=" or ">
+                title like concat('%', #{keyword}, '%')
+                or subject like concat('%', #{keyword}, '%')
+                or tags like concat('%', #{keyword}, '%')
+                or chunk_text like concat('%', #{keyword}, '%')
+            </foreach>
+            )
+        </if>
+        order by
+            case trust_level
+                when 'high' then 3
+                when 'medium' then 2
+                else 1
+            end desc,
+            id desc
+        limit #{limit}
+    </select>
+
+    <select id="selectEnabledKnowledgeChunks" resultMap="KnowledgeChunkResult">
+        <include refid="selectKnowledgeChunkVo"/>
+        where enabled = '0'
+        order by
+            case trust_level
+                when 'high' then 3
+                when 'medium' then 2
+                else 1
+            end desc,
+            id desc
+        limit #{limit}
+    </select>
+
+    <insert id="insertKnowledgeChunk" parameterType="EduKnowledgeChunk" useGeneratedKeys="true" keyProperty="id">
+        insert into edu_knowledge_chunk (
+            <if test="title != null">title,</if>
+            <if test="subject != null">subject,</if>
+            <if test="gradeLevel != null">grade_level,</if>
+            <if test="sourceType != null">source_type,</if>
+            <if test="sourceName != null">source_name,</if>
+            <if test="sourceUrl != null">source_url,</if>
+            <if test="chunkText != null">chunk_text,</if>
+            <if test="chunkIndex != null">chunk_index,</if>
+            <if test="tags != null">tags,</if>
+            <if test="trustLevel != null">trust_level,</if>
+            <if test="contentHash != null">content_hash,</if>
+            enabled,
+            create_time,
+            update_time
+        ) values (
+            <if test="title != null">#{title},</if>
+            <if test="subject != null">#{subject},</if>
+            <if test="gradeLevel != null">#{gradeLevel},</if>
+            <if test="sourceType != null">#{sourceType},</if>
+            <if test="sourceName != null">#{sourceName},</if>
+            <if test="sourceUrl != null">#{sourceUrl},</if>
+            <if test="chunkText != null">#{chunkText},</if>
+            <if test="chunkIndex != null">#{chunkIndex},</if>
+            <if test="tags != null">#{tags},</if>
+            <if test="trustLevel != null">#{trustLevel},</if>
+            <if test="contentHash != null">#{contentHash},</if>
+            #{enabled},
+            sysdate(),
+            sysdate()
+        )
+    </insert>
+
+</mapper>

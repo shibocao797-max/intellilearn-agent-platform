@@ -20,11 +20,11 @@ public class LangChain4jConfig {
 
     private static final Logger log = LoggerFactory.getLogger(LangChain4jConfig.class);
 
-    @Value("${langchain4j.open-ai.chat-model.base-url:https://api.deepseek.com/v1}")
+    @Value("${langchain4j.open-ai.chat-model.base-url:https://apihub.agnes-ai.com/v1}")
     private String chatBaseUrl;
-    @Value("${langchain4j.open-ai.chat-model.api-key:sk-xxx}")
+    @Value("${langchain4j.open-ai.chat-model.api-key:}")
     private String chatApiKey;
-    @Value("${langchain4j.open-ai.chat-model.model-name:deepseek-chat}")
+    @Value("${langchain4j.open-ai.chat-model.model-name:agnes-2.0-flash}")
     private String chatModelName;
     @Value("${langchain4j.open-ai.chat-model.max-tokens:16384}")
     private int chatMaxTokens;
@@ -33,11 +33,11 @@ public class LangChain4jConfig {
     @Value("${langchain4j.open-ai.chat-model.timeout:600s}")
     private Duration chatTimeout;
 
-    @Value("${langchain4j.open-ai.streaming-chat-model.base-url:https://api.deepseek.com/v1}")
+    @Value("${langchain4j.open-ai.streaming-chat-model.base-url:https://apihub.agnes-ai.com/v1}")
     private String streamBaseUrl;
-    @Value("${langchain4j.open-ai.streaming-chat-model.api-key:sk-xxx}")
+    @Value("${langchain4j.open-ai.streaming-chat-model.api-key:}")
     private String streamApiKey;
-    @Value("${langchain4j.open-ai.streaming-chat-model.model-name:deepseek-chat}")
+    @Value("${langchain4j.open-ai.streaming-chat-model.model-name:agnes-2.0-flash}")
     private String streamModelName;
     @Value("${langchain4j.open-ai.streaming-chat-model.max-tokens:8192}")
     private int streamMaxTokens;
@@ -48,7 +48,8 @@ public class LangChain4jConfig {
 
     @Bean
     public ChatModel chatLanguageModel() {
-        log.info("初始化 ChatModel: baseUrl={}, model={}", chatBaseUrl, chatModelName);
+        log.info("Initializing ChatModel: baseUrl={}, model={}, apiKeyConfigured={}",
+                chatBaseUrl, chatModelName, hasText(chatApiKey));
         return OpenAiChatModel.builder()
                 .baseUrl(chatBaseUrl)
                 .apiKey(chatApiKey)
@@ -61,7 +62,8 @@ public class LangChain4jConfig {
 
     @Bean
     public StreamingChatModel streamingChatModel() {
-        log.info("初始化 StreamingChatModel: baseUrl={}, model={}", streamBaseUrl, streamModelName);
+        log.info("Initializing StreamingChatModel: baseUrl={}, model={}, apiKeyConfigured={}",
+                streamBaseUrl, streamModelName, hasText(streamApiKey));
         return OpenAiStreamingChatModel.builder()
                 .baseUrl(streamBaseUrl)
                 .apiKey(streamApiKey)
@@ -70,5 +72,9 @@ public class LangChain4jConfig {
                 .temperature(streamTemperature)
                 .timeout(streamTimeout)
                 .build();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }
