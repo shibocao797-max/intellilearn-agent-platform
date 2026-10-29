@@ -5,9 +5,9 @@ services:
     container_name: edu-mysql
     restart: unless-stopped
     ports:
-      - "3308:3306"
+      - "127.0.0.1:3308:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-123456}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD before starting Compose}"
       MYSQL_DATABASE: "${MYSQL_DATABASE:-ry-vue}"
       MYSQL_CHARSET: utf8mb4
       TZ: Asia/Shanghai
@@ -32,7 +32,7 @@ services:
     container_name: edu-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -47,11 +47,11 @@ services:
     container_name: edu-minio
     restart: unless-stopped
     ports:
-      - "19000:9000"    # API 端口
-      - "19001:9001"    # Console 管理界面
+      - "127.0.0.1:19000:9000"    # API 端口
+      - "127.0.0.1:19001:9001"    # Console 管理界面
     environment:
-      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minio}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minio123456}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?Set MINIO_ROOT_USER before starting Compose}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD before starting Compose}"
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"

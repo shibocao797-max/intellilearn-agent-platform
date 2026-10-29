@@ -104,8 +104,8 @@ public class SecurityConfig
                     // 静态资源，可匿名访问
                     .requestMatchers(HttpMethod.GET, "/", "/*.html", "/**.html", "/**.css", "/**.js", "/profile/**").permitAll()
                     .requestMatchers("/swagger-ui.html", "/v3/api-docs/**", "/swagger-ui/**", "/druid/**").permitAll()
-                    // SSE 流式端点 — JWT filter 已拦截鉴权，Security 框架白名单避免 async dispatch 时误报
-                    .requestMatchers("/edu/ai/chat/stream").permitAll()
+                    // SSE 流式端点也必须在建立连接时完成 JWT 鉴权
+                    .requestMatchers("/edu/ai/chat/stream").authenticated()
                     // 除上面外的所有请求全部需要鉴权认证
                     .anyRequest().authenticated();
             })

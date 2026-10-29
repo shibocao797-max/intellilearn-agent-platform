@@ -61,10 +61,10 @@ spring:
   # 文件上传
   servlet:
     multipart:
-      # 单个文件大小（增大以支持视频上传）
-      max-file-size: 200MB
-      # 设置总上传的文件大小
-      max-request-size: 500MB
+      # 与通用文件上传工具的单文件上限保持一致
+      max-file-size: 50MB
+      # 限制单次多文件请求总量
+      max-request-size: 200MB
   jackson:
     time-zone: GMT+8
     date-format: yyyy-MM-dd HH:mm:ss
@@ -102,7 +102,7 @@ token:
   # 令牌自定义标识
   header: Authorization
   # 令牌密钥
-  secret: ${TOKEN_SECRET:dev-only-change-me}
+  secret: ${TOKEN_SECRET:}
   # 令牌有效期（默认30分钟）
   expireTime: 30
 
@@ -131,9 +131,9 @@ springdoc:
     tags-sorter: alpha
   group-configs:
     - group: 'default'
-      display-name: '测试模块'
+      display-name: '教育智能体 API'
       paths-to-match: '/**'
-      packages-to-scan: com.ruoyi.web.controller.tool
+      packages-to-scan: com.ruoyi.web.controller
 
 # 防盗链配置
 referer:
@@ -154,17 +154,19 @@ xss:
 # ========== 文件存储配置 ==========
 file-storage:
   # 存储类型: local（本地磁盘，默认）/ minio（MinIO对象存储）
-  type: minio
+  type: ${FILE_STORAGE_TYPE:local}
   # MinIO 配置（仅 type=minio 时生效）
   minio:
     # MinIO 服务地址（API端口，非Console端口）
     endpoint: ${MINIO_ENDPOINT:http://localhost:19000}
     # 访问密钥
-    access-key: ${MINIO_ACCESS_KEY:minio}
+    access-key: ${MINIO_ACCESS_KEY:}
     # 秘密密钥
-    secret-key: ${MINIO_SECRET_KEY:minio123456}
+    secret-key: ${MINIO_SECRET_KEY:}
     # 存储桶名称（启动时自动创建）
     bucket: ${MINIO_BUCKET:edu-agent}
+    # 为兼容浏览器直接预览 AI 生成媒体，仅开放此对象前缀；用户附件始终保持私有
+    public-read-prefix: ${MINIO_PUBLIC_READ_PREFIX:ai-generated}
 
 # ========== LangChain4j 配置（多智能体系统 LLM 调用层） ==========
 langchain4j:

@@ -12,6 +12,8 @@ import com.ruoyi.web.service.MimoAsrService;
 import com.ruoyi.web.controller.system.dto.ChatRequest;
 import com.ruoyi.system.service.IEduChatAttachmentService;
 import com.ruoyi.system.domain.EduChatAttachment;
+import com.ruoyi.common.annotation.RateLimiter;
+import com.ruoyi.common.enums.LimitType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import jakarta.validation.Valid;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +39,7 @@ import java.util.Map;
 public class EduAgentController extends BaseController {
 
     private static final Logger log = LoggerFactory.getLogger(EduAgentController.class);
+    private static final long SSE_TIMEOUT_MILLIS = 10 * 60 * 1000L;
 
     @Autowired
     private AgentOrchestrationService orchestrationService;
@@ -57,7 +61,8 @@ public class EduAgentController extends BaseController {
     private TaskExecutor applicationTaskExecutor;
 
     @PostMapping("/chat")
-    public AjaxResult chat(@RequestBody ChatRequest body) {
+    @RateLimiter(time = 60, count = 30, limitType = LimitType.IP)
+    public AjaxResult chat(@Valid @RequestBody ChatRequest body) {
         Long userId = SecurityUtils.getUserId();
         String message = body.getMessage();
         String sessionId = body.getSessionId() == null || body.getSessionId().isBlank() ? conversationService.newSessionId() : body.getSessionId();
@@ -122,14 +127,15 @@ public class EduAgentController extends BaseController {
     }
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chatStream(@RequestBody ChatRequest body) {
+    @RateLimiter(time = 60, count = 20, limitType = LimitType.IP)
+    public SseEmitter chatStream(@Valid @RequestBody ChatRequest body) {
         Long userId = SecurityUtils.getUserId();
         String message = body.getMessage();
         String sessionId = body.getSessionId() == null || body.getSessionId().isBlank() ? conversationService.newSessionId() : body.getSessionId();
 
         List<EduChatAttachment> attachments = attachmentService.validateForChat(userId, sessionId, body.getAttachmentIds());
         if ((message == null || message.isBlank()) && attachments.isEmpty()) {
-            SseEmitter err = new SseEmitter(0L);
+            SseEmitter err = new SseEmitter(SSE_TIMEOUT_MILLIS);
             err.completeWithError(new IllegalArgumentException("message or attachment cannot be empty"));
             return err;
         }
@@ -139,7 +145,7 @@ public class EduAgentController extends BaseController {
         String safeAttachmentContext = attachmentContext(attachments);
         conversationService.saveUserMessageWithAttachments(userId, sessionId, displayMessage, attachmentMetadata);
 
-        SseEmitter rawEmitter = new SseEmitter(0L);
+        SseEmitter rawEmitter = new SseEmitter(SSE_TIMEOUT_MILLIS);
         final String sid = sessionId;
         final Long uid = userId;
 
@@ -220,7 +226,11 @@ public class EduAgentController extends BaseController {
     }
 
     @PostMapping("/speech/transcribe")
+    @RateLimiter(time = 60, count = 10, limitType = LimitType.IP)
     public AjaxResult transcribeSpeech(@RequestBody Map<String, String> body) {
+        if (body == null) {
+            return error("request body cannot be empty");
+        }
         String audioData = body.get("audioData");
         String mimeType = body.getOrDefault("mimeType", "audio/wav");
         String text = mimoAsrService.transcribe(audioData, mimeType);

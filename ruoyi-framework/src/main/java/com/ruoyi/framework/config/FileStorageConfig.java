@@ -39,14 +39,15 @@ public class FileStorageConfig
             @Value("${file-storage.minio.endpoint}") String endpoint,
             @Value("${file-storage.minio.access-key}") String accessKey,
             @Value("${file-storage.minio.secret-key}") String secretKey,
-            @Value("${file-storage.minio.bucket}") String bucket)
+            @Value("${file-storage.minio.bucket}") String bucket,
+            @Value("${file-storage.minio.public-read-prefix:ai-generated}") String publicReadPrefix)
     {
         try
         {
             // 运行时检测 MinIO SDK 是否在 classpath —— 走正常类加载委派链
             Class.forName("io.minio.MinioClient");
             // 全限定名引用 MinioFileStorageServiceImpl，避免直接 import 触发类加载
-            return new com.ruoyi.common.utils.file.MinioFileStorageServiceImpl(endpoint, accessKey, secretKey, bucket);
+            return new com.ruoyi.common.utils.file.MinioFileStorageServiceImpl(endpoint, accessKey, secretKey, bucket, publicReadPrefix);
         }
         catch (ClassNotFoundException e)
         {

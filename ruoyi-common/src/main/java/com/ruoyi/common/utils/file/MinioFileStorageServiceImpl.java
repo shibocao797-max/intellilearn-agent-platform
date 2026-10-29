@@ -39,13 +39,18 @@ public class MinioFileStorageServiceImpl implements FileStorageService
     /** MinIO 服务端点（用于构造返回 URL） */
     private final String endpoint;
 
+    /** 允许匿名读取的对象前缀，仅用于兼容 AI 生成媒体的浏览器预览 */
+    private final String publicReadPrefix;
+
     /**
      * 构造 MinIO 存储服务，初始化客户端并确保存储桶存在
      */
-    public MinioFileStorageServiceImpl(String endpoint, String accessKey, String secretKey, String bucket)
+    public MinioFileStorageServiceImpl(String endpoint, String accessKey, String secretKey, String bucket,
+                                       String publicReadPrefix)
     {
         this.endpoint = endpoint;
         this.bucket = bucket;
+        this.publicReadPrefix = normalizePath(publicReadPrefix, "ai-generated");
         this.minioClient = MinioClient.builder()
                 .endpoint(endpoint)
                 .credentials(accessKey, secretKey)
@@ -71,8 +76,9 @@ public class MinioFileStorageServiceImpl implements FileStorageService
             {
                 log.info("MinIO 存储桶 [{}] 已存在", bucket);
             }
-            // 设置 bucket 公共读权限，允许浏览器直接通过 URL 加载图片（不携带 MinIO 认证凭证）
-            String policy = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Deny\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::" + bucket + "/edu-chat/*\"]},{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::" + bucket + "/*\"]}]}";
+            // 仅开放 AI 生成媒体前缀，聊天附件不得通过匿名 URL 读取。
+            // 其余对象默认保持私有，避免把整个用户资源桶暴露到公网。
+            String policy = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::" + bucket + "/" + publicReadPrefix + "/*\"]}]}";
             minioClient.setBucketPolicy(
                 SetBucketPolicyArgs.builder().bucket(bucket).config(policy).build());
         }

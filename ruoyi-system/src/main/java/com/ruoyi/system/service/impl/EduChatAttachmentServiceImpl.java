@@ -21,6 +21,7 @@ import java.util.*;
 
 @Service
 public class EduChatAttachmentServiceImpl implements IEduChatAttachmentService {
+    private static final long MAX_FILE_BYTES = 25L * 1024 * 1024;
     private static final int MAX_EXTRACTED_CHARS = 20000;
     private static final String[] ALLOWED = {"txt","md","csv","json","java","py","js","ts","css","xml","sql","yaml","yml","docx","xlsx","pptx","pdf","jpg","jpeg","png","webp"};
     private static final Set<String> TEXT = Set.of("txt","md","csv","json","java","py","js","ts","css","xml","sql","yaml","yml");
@@ -31,6 +32,7 @@ public class EduChatAttachmentServiceImpl implements IEduChatAttachmentService {
     @Override public EduChatAttachment upload(Long userId, String sessionId, MultipartFile file) {
         if (sessionId == null || sessionId.isBlank()) throw new ServiceException("sessionId cannot be empty");
         if (file == null || file.isEmpty()) throw new ServiceException("file cannot be empty");
+        if (file.getSize() > MAX_FILE_BYTES) throw new ServiceException("Attachment exceeds 25MB limit");
         String extension = FilenameUtils.getExtension(Objects.requireNonNullElse(file.getOriginalFilename(), "")).toLowerCase(Locale.ROOT);
         if (!Arrays.asList(ALLOWED).contains(extension)) throw new ServiceException("Unsupported attachment type: " + extension);
         verifyFileSignature(file, extension);

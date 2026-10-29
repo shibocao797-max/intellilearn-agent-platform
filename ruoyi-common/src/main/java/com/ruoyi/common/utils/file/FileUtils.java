@@ -152,6 +152,21 @@ public class FileUtils
      */
     public static boolean checkAllowDownload(String resource)
     {
+        if (resource == null || resource.isBlank())
+        {
+            return false;
+        }
+
+        // Chat attachments are user-owned and must go through
+        // EduAttachmentController's ownership check, never the generic path API.
+        String normalized = resource.replace('\\', '/');
+        if (normalized.startsWith("edu-chat/")
+                || normalized.contains("/edu-chat/")
+                || normalized.contains("%2fedu-chat%2f"))
+        {
+            return false;
+        }
+
         // 禁止目录上跳级别
         if (StringUtils.contains(resource, ".."))
         {

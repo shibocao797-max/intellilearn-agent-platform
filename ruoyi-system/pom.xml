@@ -17,6 +17,13 @@
 
     <dependencies>
 
+        <!-- JUnit 5：执行 src/test/java 中的可执行契约测试 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- 通用工具-->
         <dependency>
             <groupId>com.ruoyi</groupId>

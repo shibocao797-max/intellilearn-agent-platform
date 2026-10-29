@@ -8,7 +8,7 @@ spring:
             master:
                 url: ${edu.mysql.url:${MYSQL_URL:jdbc:mysql://localhost:3308/ry-vue?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=GMT%2B8}}&allowPublicKeyRetrieval=true
                 username: ${edu.mysql.username:${MYSQL_USERNAME:root}}
-                password: ${edu.mysql.password:${MYSQL_PASSWORD:123456}}
+                password: ${edu.mysql.password:${MYSQL_PASSWORD:}}
             # 从库数据源
             slave:
                 # 从数据源开关/默认关闭
@@ -48,7 +48,7 @@ spring:
                 url-pattern: /druid/*
                 # 控制台管理用户名和密码
                 login-username: ${DRUID_LOGIN_USERNAME:ruoyi}
-                login-password: ${DRUID_LOGIN_PASSWORD:123456}
+                login-password: ${DRUID_LOGIN_PASSWORD:}
             filter:
                 stat:
                     enabled: true

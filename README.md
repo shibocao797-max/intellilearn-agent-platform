@@ -40,7 +40,7 @@ sql               数据库初始化脚本
 ### 后端构建
 
 ```bash
-mvn clean package -Dmaven.test.skip=true
+mvn clean package
 ```
 
 构建完成后运行：
@@ -82,14 +82,52 @@ npm run dev
 - `ruoyi-admin/src/main/resources/application-druid.yml`
 
 本地敏感配置请放在 `config/local-secrets.yml` 或 `ruoyi-admin/config/local-secrets.yml`，这些文件已被 `.gitignore` 排除，不应提交到仓库。
+可复制 `config/local-secrets.example.yml` 作为模板。应用启动时会校验 JWT、数据库、Druid 和 MinIO（启用时）凭据；仓库不再提供可直接使用的默认密码。
+`sql/01_ry_20260417.sql` 中的初始化密码也只是占位符；导入后请立即修改，并为 SQL 中的示例管理员账号设置新的强密码。
+
+Compose 仅绑定到本机回环地址，并要求显式提供基础设施密码：
+
+```powershell
+$env:MYSQL_ROOT_PASSWORD = "replace-me"
+$env:MINIO_ROOT_USER = "minio"
+$env:MINIO_ROOT_PASSWORD = "replace-me"
+docker compose up -d
+```
+
+### 测试
+
+```bash
+mvn test
+```
+
+当前 Maven 测试会执行 `ruoyi-system` 下的 12 个契约测试，以及管理端通用上传接口测试；契约测试覆盖任务幂等、并发事件、Agent 隔离、画像确认和文本清理等核心行为。
 
 ## 数据库初始化
 
 SQL 脚本位于 `sql/`：
 
-- `ry_20260417.sql`
-- `ai_init.sql`
-- `edu_resource.sql`
+- `01_ry_20260417.sql`
+- `02_ai_init.sql`
+- `03_edu_resource.sql`
+- `04_sys_attachment.sql`
+- `05_quartz.sql`
+- `05_repair_media_urls.sql`
+- `06_gen_table.sql`
+- `07_edu_knowledge.sql`
+- `08_edu_user_workspace.sql`
+- `09_profile_trust.sql`
+- `10_edu_chat_attachment.sql`
+- `11_edu_action_plan.sql`
+- `12_sys_notice_read_hidden.sql`
+- `13_quiz_practice_session.sql`
+- `14_quiz_practice_current_position.sql`
+- `15_edu_ai_task.sql`
+- `16_learner_profile_confirmation.sql`
+- `17_quiz_practice_question_snapshot.sql`
+- `18_conversation_session.sql`
+- `19_edu_user_account_profile.sql`
+
+这些脚本是新库初始化材料，不是可重复执行的数据库迁移。`01` 至 `05_quartz` 中包含 `DROP TABLE`，`12`、`14`、`17` 含直接 `ALTER TABLE`；对已有数据库重跑可能删除数据或因字段已存在而失败。`docker-compose.yml` 将此目录挂载到 MySQL 首次初始化目录，仅应用于空数据卷。现有环境升级前应先备份，并为变更编写单独、经过验证的版本化迁移脚本；不要直接重放整套初始化文件。
 
 ## 开源基础
 

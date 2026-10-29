@@ -19,8 +19,11 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 ### 后端构建
 
 ```bash
-# 完整构建（跳过测试）
-mvn clean package -Dmaven.test.skip=true
+# 运行测试
+mvn test
+
+# 完整构建（包含测试）
+mvn clean package
 
 # 仅清理
 mvn clean
@@ -98,10 +101,12 @@ ruoyi-quartz      → 定时任务
 
 ## 数据库初始化
 
-SQL 脚本位于 `sql/` 目录：
-- `ry_20260417.sql` — 若依基础表
-- `ai_init.sql` — AI 核心表（学习画像、对话历史、行为日志等）
-- `edu_resource.sql` — 教育资源表
+SQL 脚本位于 `sql/` 目录，Docker 首次初始化时会按文件名顺序执行：
+- `01_ry_20260417.sql` — 若依基础表
+- `02_ai_init.sql`、`03_edu_resource.sql` — AI 核心表、教育资源和题库
+- `04_sys_attachment.sql` 至 `19_edu_user_account_profile.sql` — 后续业务表及增量修复脚本
+
+完整清单和手动执行说明以 `README.md` 为准。已有数据库不会因挂载初始化目录而自动执行新增脚本。
 
 ## 扩展 Agent
 

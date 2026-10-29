@@ -20,6 +20,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
+import com.ruoyi.common.annotation.RateLimiter;
+import com.ruoyi.common.enums.LimitType;
 
 @RestController
 @RequestMapping("/edu/ai/tasks")
@@ -29,7 +32,8 @@ public class EduAiTaskController extends BaseController
     private IEduAiTaskService taskService;
 
     @PostMapping
-    public AjaxResult create(@RequestBody ChatRequest body)
+    @RateLimiter(time = 60, count = 20, limitType = LimitType.IP)
+    public AjaxResult create(@Valid @RequestBody ChatRequest body)
     {
         EduAiTask task = taskService.createTask(SecurityUtils.getUserId(), body.getMessage(),
             body.getSessionId(), body.getAttachmentIds(), body.getClientRequestId());

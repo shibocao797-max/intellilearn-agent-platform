@@ -9,6 +9,8 @@ import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpServletResponse;
 import com.ruoyi.common.utils.file.FileStorageService;
 import java.util.Map;
+import com.ruoyi.common.annotation.RateLimiter;
+import com.ruoyi.common.enums.LimitType;
 
 @RestController
 @RequestMapping("/edu/ai/attachments")
@@ -16,6 +18,7 @@ public class EduAttachmentController extends BaseController {
     @Autowired private IEduChatAttachmentService attachmentService;
     @Autowired private FileStorageService fileStorageService;
     @PostMapping
+    @RateLimiter(time = 60, count = 20, limitType = LimitType.IP)
     public AjaxResult upload(@RequestParam("sessionId") String sessionId, @RequestParam("file") MultipartFile file) {
         var attachment = attachmentService.upload(SecurityUtils.getUserId(), sessionId, file);
         return success(attachmentService.publicMetadata(attachment));

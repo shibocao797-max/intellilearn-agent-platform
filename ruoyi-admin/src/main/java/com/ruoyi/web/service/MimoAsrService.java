@@ -21,6 +21,7 @@ public class MimoAsrService {
 
     private static final MediaType JSON_MEDIA_TYPE = MediaType.get("application/json; charset=utf-8");
     private static final int MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+    private static final long MAX_AUDIO_BASE64_LENGTH = ((MAX_AUDIO_BYTES + 2L) / 3L) * 4L;
 
     private final OkHttpClient okHttpClient = new OkHttpClient.Builder().build();
 
@@ -50,7 +51,11 @@ public class MimoAsrService {
             throw new ServiceException("Unsupported audio mime type");
         }
 
-        int approxBytes = (audioBase64.length() * 3) / 4;
+        if (audioBase64.length() > MAX_AUDIO_BASE64_LENGTH
+                || !audioBase64.matches("^[A-Za-z0-9+/]*={0,2}$")) {
+            throw new ServiceException("Audio payload is invalid or exceeds MiMo 10MB limit");
+        }
+        long approxBytes = (audioBase64.length() * 3L) / 4L;
         if (approxBytes > MAX_AUDIO_BYTES) {
             throw new ServiceException("Audio file exceeds MiMo 10MB limit");
         }

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate SQL manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          documented="$(sed -n 's/^- `\([^`]*\.sql\)`$/\1/p' README.md | sort)"
+          actual="$(find sql -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | sort)"
+          diff -u <(printf '%s\n' "$documented") <(printf '%s\n' "$actual")
+
+      - name: Validate Compose configuration
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+          MINIO_ROOT_USER: ci-minio
+          MINIO_ROOT_PASSWORD: ci-minio-password
+        run: docker compose config --quiet
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run backend tests
+        run: mvn --batch-mode test
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            ruoyi-ui/package-lock.json
+            edu-ai-vue3/package-lock.json
+
+      - name: Build admin frontend
+        working-directory: ruoyi-ui
+        run: |
+          npm ci --ignore-scripts
+          npm run build:prod
+
+      - name: Build student frontend
+        working-directory: edu-ai-vue3
+        run: |
+          npm ci --ignore-scripts
+          npm run build
