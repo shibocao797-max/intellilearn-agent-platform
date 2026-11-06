@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.ruoyi.common.annotation.RateLimiter;
+import com.ruoyi.common.enums.LimitType;
 
 import java.util.List;
 import java.util.Locale;
@@ -153,6 +155,7 @@ public class EduResourceController extends BaseController {
      * 查询 Agnes 视频异步任务状态。
      */
     @GetMapping("/video/{videoId}/status")
+    @RateLimiter(time = 60, count = 30, limitType = LimitType.IP)
     public AjaxResult videoStatus(@PathVariable String videoId,
                                   @RequestParam(required = false) Long resourceId,
                                   @RequestParam(defaultValue = "1") Integer attempts,
@@ -193,7 +196,7 @@ public class EduResourceController extends BaseController {
             status.put("resourceUpdated", resourceUpdated);
             return success(UserFacingTextSanitizer.sanitizeValue(status));
         } catch (Exception e) {
-            return error("视频状态查询失败: " + e.getMessage());
+            return error("视频状态查询失败，请稍后重试");
         }
     }
 

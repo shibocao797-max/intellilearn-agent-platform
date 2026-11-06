@@ -2,6 +2,7 @@ package com.ruoyi.common.utils.file;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Objects;
 import org.apache.commons.io.FilenameUtils;
@@ -156,7 +157,13 @@ public class FileUploadUtils
 
     public static final File getAbsoluteFile(String uploadDir, String fileName) throws IOException
     {
-        File desc = new File(uploadDir + File.separator + fileName);
+        File root = resolveUploadRoot(uploadDir);
+        File desc = new File(root, fileName).getCanonicalFile();
+        Path rootPath = root.toPath();
+        if (!desc.toPath().startsWith(rootPath))
+        {
+            throw new IOException("非法文件路径");
+        }
 
         if (!desc.exists())
         {
@@ -170,9 +177,36 @@ public class FileUploadUtils
 
     public static final String getPathFileName(String uploadDir, String fileName) throws IOException
     {
-        int dirLastIndex = RuoYiConfig.getProfile().length() + 1;
-        String currentDir = StringUtils.substring(uploadDir, dirLastIndex);
-        return Constants.RESOURCE_PREFIX + "/" + currentDir + "/" + fileName;
+        String profile = new File(RuoYiConfig.getProfile()).getCanonicalPath();
+        String base = new File(uploadDir).getCanonicalPath();
+        String currentDir;
+        if (base.equals(profile))
+        {
+            currentDir = "";
+        }
+        else if (base.startsWith(profile + File.separator))
+        {
+            currentDir = base.substring(profile.length() + 1).replace(File.separatorChar, '/');
+        }
+        else
+        {
+            currentDir = uploadDir.replace("\\", "/");
+            while (currentDir.startsWith("/"))
+            {
+                currentDir = currentDir.substring(1);
+            }
+        }
+        return Constants.RESOURCE_PREFIX + "/" + (currentDir.isBlank() ? fileName : currentDir + "/" + fileName);
+    }
+
+    private static File resolveUploadRoot(String uploadDir) throws IOException
+    {
+        File configured = new File(uploadDir);
+        if (!configured.isAbsolute())
+        {
+            configured = new File(RuoYiConfig.getProfile(), uploadDir);
+        }
+        return configured.getCanonicalFile();
     }
 
     /**

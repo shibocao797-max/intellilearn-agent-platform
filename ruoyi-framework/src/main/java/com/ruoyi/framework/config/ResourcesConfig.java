@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.http.CacheControl;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -22,6 +23,7 @@ import com.ruoyi.framework.interceptor.RepeatSubmitInterceptor;
  * @author ruoyi
  */
 @Configuration
+@EnableScheduling
 public class ResourcesConfig implements WebMvcConfigurer
 {
     @Autowired
@@ -30,6 +32,9 @@ public class ResourcesConfig implements WebMvcConfigurer
     /** MinIO 模式下跳过本地资源映射，文件由 MinIO 直接提供 URL 访问 */
     @Value("${file-storage.type:local}")
     private String storageType;
+
+    @Value("${security.cors.allowed-origins:http://localhost:80,http://localhost:8080,http://localhost:5173}")
+    private String allowedOrigins;
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry)
@@ -64,11 +69,17 @@ public class ResourcesConfig implements WebMvcConfigurer
     {
         CorsConfiguration config = new CorsConfiguration();
         // 设置访问源地址
-        config.addAllowedOriginPattern("*");
+        for (String origin : allowedOrigins.split(","))
+        {
+            if (!origin.isBlank())
+            {
+                config.addAllowedOrigin(origin.trim());
+            }
+        }
         // 设置访问源请求头
         config.addAllowedHeader("*");
         // 设置访问源请求方法
-        config.addAllowedMethod("*");
+        config.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         // 有效期 1800秒
         config.setMaxAge(1800L);
         // 添加映射路径，拦截一切请求

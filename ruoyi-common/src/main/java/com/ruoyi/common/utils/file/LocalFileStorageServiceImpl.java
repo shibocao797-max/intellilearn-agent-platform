@@ -59,27 +59,42 @@ public class LocalFileStorageServiceImpl implements FileStorageService
     @Override
     public boolean delete(String filePath)
     {
-        // 构造本地绝对路径：profile + 去掉 /profile 前缀的相对路径
-        String absolutePath = RuoYiConfig.getProfile() + FileUtils.stripPrefix(filePath);
-        return FileUtils.deleteFile(absolutePath);
+        try
+        {
+            return FileUtils.deleteFile(resolveLocalPath(filePath).getPath());
+        }
+        catch (Exception e)
+        {
+            return false;
+        }
     }
 
     @Override
     public void download(String filePath, HttpServletResponse response) throws Exception
     {
         // 通用下载：如果 filePath 以 /profile 开头，去掉前缀转为本地绝对路径
-        String localPath;
-        if (filePath.startsWith("/profile"))
-        {
-            localPath = RuoYiConfig.getProfile() + FileUtils.stripPrefix(filePath);
-        }
-        else
-        {
-            localPath = RuoYiConfig.getProfile() + File.separator + filePath;
-        }
+        String localPath = resolveLocalPath(filePath).getPath();
         response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
         FileUtils.setAttachmentResponseHeader(response, FileUtils.getName(filePath));
         FileUtils.writeBytes(localPath, response.getOutputStream());
+    }
+
+    private File resolveLocalPath(String filePath) throws java.io.IOException
+    {
+        if (filePath == null || filePath.isBlank())
+        {
+            throw new IllegalArgumentException("文件路径不能为空");
+        }
+        String relative = filePath.startsWith("/profile")
+            ? FileUtils.stripPrefix(filePath)
+            : filePath;
+        File root = new File(RuoYiConfig.getProfile()).getCanonicalFile();
+        File target = new File(root, relative).getCanonicalFile();
+        if (!target.toPath().startsWith(root.toPath()))
+        {
+            throw new IllegalArgumentException("非法文件路径");
+        }
+        return target;
     }
 
     private String normalizePath(String value, String fallback)

@@ -42,7 +42,7 @@
         </div>
 
         <div class="notice-body">
-          <div v-if="hasContent" class="notice-content" v-html="detail.noticeContent" />
+          <div v-if="hasContent" class="notice-content" v-html="safeNoticeContent" />
           <div v-else class="notice-empty notice-empty--inner">
             <i class="el-icon-document"></i> 暂无内容
           </div>
@@ -72,6 +72,23 @@ export default {
     hasContent() {
       const c = this.detail && this.detail.noticeContent
       return c != null && String(c).trim() !== ''
+    },
+    safeNoticeContent() {
+      const source = this.detail && this.detail.noticeContent
+      if (!source || typeof window === 'undefined' || !window.DOMParser) return ''
+      const doc = new DOMParser().parseFromString(String(source), 'text/html')
+      doc.querySelectorAll('script, iframe, object, embed, form, link, meta, style').forEach(node => node.remove())
+      doc.querySelectorAll('*').forEach(node => {
+        Array.from(node.attributes).forEach(attribute => {
+          const name = attribute.name.toLowerCase()
+          const value = attribute.value.trim()
+          if (name.startsWith('on') || name === 'srcdoc'
+            || ((name === 'href' || name === 'src') && /^(javascript|data):/i.test(value))) {
+            node.removeAttribute(attribute.name)
+          }
+        })
+      })
+      return doc.body.innerHTML
     }
   },
   methods: {

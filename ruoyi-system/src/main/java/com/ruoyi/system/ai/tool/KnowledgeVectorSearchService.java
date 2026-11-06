@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.scheduling.annotation.Scheduled;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -113,9 +114,8 @@ public class KnowledgeVectorSearchService
             try
             {
                 embeddingModel = new AllMiniLmL6V2EmbeddingModel();
-                EduKnowledgeChunk query = new EduKnowledgeChunk();
-                query.setEnabled("0");
-                List<EduKnowledgeChunk> chunks = knowledgeChunkMapper.selectKnowledgeChunkList(query);
+                List<EduKnowledgeChunk> chunks = knowledgeChunkMapper.selectEnabledKnowledgeChunks(
+                    Math.max(1, vectorCandidateLimit));
                 if (chunks.size() > vectorCandidateLimit)
                 {
                     chunks = chunks.subList(0, vectorCandidateLimit);
@@ -155,6 +155,23 @@ public class KnowledgeVectorSearchService
                 log.warn("Knowledge vector index hit non-Exception throwable, fallback to keyword retrieval: {}",
                         summarizeThrowable(t));
             }
+        }
+    }
+
+    /** Refresh the in-memory index so knowledge changes take effect without restart. */
+    @Scheduled(fixedDelayString = "${edu.ai.rag.refresh-interval-ms:300000}")
+    public void refreshIndex()
+    {
+        if (!vectorEnabled)
+        {
+            return;
+        }
+        synchronized (this)
+        {
+            initialized = false;
+            unavailable = false;
+            index = List.of();
+            ensureIndex();
         }
     }
 

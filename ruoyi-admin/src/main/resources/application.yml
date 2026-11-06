@@ -34,7 +34,7 @@ server:
 # 日志配置
 logging:
   level:
-    com.ruoyi: debug
+    com.ruoyi: info
     org.springframework: warn
 
 # 用户配置
@@ -72,7 +72,7 @@ spring:
   devtools:
     restart:
       # 热部署开关
-      enabled: true
+      enabled: ${SPRING_DEVTOOLS_ENABLED:false}
   data:
     # redis 配置
     redis:
@@ -83,7 +83,7 @@ spring:
       # 数据库索引
       database: 0
       # 密码
-      password:
+      password: ${REDIS_PASSWORD:}
       # 连接超时时间
       timeout: 10s
       lettuce:
@@ -102,7 +102,7 @@ token:
   # 令牌自定义标识
   header: Authorization
   # 令牌密钥
-  secret: ${TOKEN_SECRET:}
+  secret: ${TOKEN_SECRET:?Set TOKEN_SECRET before starting the application}
   # 令牌有效期（默认30分钟）
   expireTime: 30
 
@@ -126,7 +126,7 @@ springdoc:
   api-docs:
     path: /v3/api-docs
   swagger-ui:
-    enabled: true
+    enabled: ${SWAGGER_ENABLED:false}
     path: /swagger-ui.html
     tags-sorter: alpha
   group-configs:
@@ -150,6 +150,10 @@ xss:
   excludes: /system/notice
   # 匹配链接
   urlPatterns: /system/*,/monitor/*,/tool/*
+
+security:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:80,http://localhost:8080,http://localhost:5173}
 
 # ========== 文件存储配置 ==========
 file-storage:

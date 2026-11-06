@@ -152,7 +152,8 @@ public class EduQuizController extends BaseController {
     /** 答题记录 */
     @GetMapping("/records")
     public AjaxResult records(@RequestParam(defaultValue = "50") int limit) {
-        return success(quizRecordMapper.selectByUser(SecurityUtils.getUserId(), limit));
+        int safeLimit = Math.max(1, Math.min(100, limit));
+        return success(quizRecordMapper.selectByUser(SecurityUtils.getUserId(), safeLimit));
     }
 
     /** 答题统计 */

@@ -52,7 +52,7 @@ public class CommonController
      * @param fileName 文件名称
      * @param delete 是否删除
      */
-    @PreAuthorize("#p1 != true or @ss.hasPermi('system:attachment:list')")
+    @PreAuthorize("@ss.hasPermi('system:attachment:list')")
     @GetMapping("/download")
     public void fileDownload(String fileName, Boolean delete, HttpServletResponse response, HttpServletRequest request)
     {
@@ -105,7 +105,8 @@ public class CommonController
         }
         catch (Exception e)
         {
-            return AjaxResult.error(e.getMessage());
+            log.error("上传文件失败", e);
+            return AjaxResult.error("文件上传失败，请稍后重试");
         }
     }
 
@@ -162,7 +163,8 @@ public class CommonController
         catch (Exception e)
         {
             cleanupUploadedFiles(fileNames);
-            return AjaxResult.error(e.getMessage());
+            log.error("批量上传文件失败", e);
+            return AjaxResult.error("文件上传失败，请稍后重试");
         }
     }
 
@@ -202,6 +204,7 @@ public class CommonController
      * 本地资源通用下载
      */
     @GetMapping("/download/resource")
+    @PreAuthorize("isAuthenticated()")
     public void resourceDownload(String resource, HttpServletRequest request, HttpServletResponse response)
             throws Exception
     {
@@ -247,7 +250,7 @@ public class CommonController
         catch (Exception e)
         {
             log.error("删除文件失败", e);
-            return AjaxResult.error(e.getMessage());
+            return AjaxResult.error("文件删除失败，请稍后重试");
         }
     }
 }

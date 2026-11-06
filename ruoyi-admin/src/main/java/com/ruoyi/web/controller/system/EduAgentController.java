@@ -79,7 +79,7 @@ public class EduAgentController extends BaseController {
             finalState = orchestrationService.execute(userId, graphMessage, sessionId, attachmentContext(attachments));
         } catch (Exception e) {
             log.error("chat handling failed: {}", e.getMessage(), e);
-            return error("AI handling failed: " + e.getMessage());
+            return error("AI 服务暂时不可用，请稍后重试");
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
@@ -185,7 +185,7 @@ public class EduAgentController extends BaseController {
                 emitter.complete();
             } catch (Exception e) {
                 log.error("SSE handling failed: {}", e.getMessage(), e);
-                emitter.onError("AI handling failed: " + e.getMessage());
+                emitter.onError("AI 服务暂时不可用，请稍后重试");
                 emitter.complete();
             }
         });

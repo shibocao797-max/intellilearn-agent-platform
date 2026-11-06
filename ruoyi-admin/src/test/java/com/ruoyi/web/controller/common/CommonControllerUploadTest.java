@@ -32,7 +32,7 @@ class CommonControllerUploadTest
                 jakarta.servlet.http.HttpServletRequest.class);
         Method delete = CommonController.class.getMethod("fileDelete", String.class);
 
-        assertEquals("#p1 != true or @ss.hasPermi('system:attachment:list')",
+        assertEquals("@ss.hasPermi('system:attachment:list')",
                 download.getAnnotation(PreAuthorize.class).value());
         assertEquals("@ss.hasPermi('system:attachment:list')",
                 delete.getAnnotation(PreAuthorize.class).value());
