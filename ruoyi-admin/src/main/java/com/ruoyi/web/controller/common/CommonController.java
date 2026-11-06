@@ -25,6 +25,9 @@ import com.ruoyi.common.utils.file.FileUploadUtils;
 import com.ruoyi.common.utils.file.FileUtils;
 import com.ruoyi.common.utils.file.MimeTypeUtils;
 import com.ruoyi.framework.config.ServerConfig;
+import com.ruoyi.common.utils.SecurityUtils;
+import com.ruoyi.system.domain.SysAttachment;
+import com.ruoyi.system.mapper.SysAttachmentMapper;
 
 /**
  * 通用请求处理
@@ -44,6 +47,9 @@ public class CommonController
     @Autowired
     private FileStorageService fileStorageService;
 
+    @Autowired(required = false)
+    private SysAttachmentMapper attachmentMapper;
+
     private static final String FILE_DELIMITER = ",";
 
     /**
@@ -52,12 +58,13 @@ public class CommonController
      * @param fileName 文件名称
      * @param delete 是否删除
      */
-    @PreAuthorize("@ss.hasPermi('system:attachment:list')")
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/download")
     public void fileDownload(String fileName, Boolean delete, HttpServletResponse response, HttpServletRequest request)
     {
         try
         {
+            assertDownloadAuthorized(fileName, Boolean.TRUE.equals(delete));
             if (!FileUtils.checkAllowDownload(fileName))
             {
                 throw new Exception(StringUtils.format("文件名称({})非法，不允许下载。 ", fileName));
@@ -94,14 +101,23 @@ public class CommonController
         {
             // 通过 FileStorageService 上传（本地 / MinIO 自动切换）
             String fileName = fileStorageService.upload(RuoYiConfig.getUploadPath(), file, MimeTypeUtils.DEFAULT_ALLOWED_EXTENSION);
-            // MinIO 返回完整 HTTP URL，本地返回 /profile/... 相对路径
-            String url = fileName.startsWith("http") ? fileName : serverConfig.getUrl() + fileName;
-            AjaxResult ajax = AjaxResult.success();
-            ajax.put("url", url);
-            ajax.put("fileName", fileName);
-            ajax.put("newFileName", FileUtils.getName(fileName));
-            ajax.put("originalFilename", file.getOriginalFilename());
-            return ajax;
+            try
+            {
+                recordAttachment(file, fileName, "COMMON_UPLOAD", null);
+                // MinIO 返回完整 HTTP URL，本地返回 /profile/... 相对路径
+                String url = fileName.startsWith("http") ? fileName : serverConfig.getUrl() + fileName;
+                AjaxResult ajax = AjaxResult.success();
+                ajax.put("url", url);
+                ajax.put("fileName", fileName);
+                ajax.put("newFileName", FileUtils.getName(fileName));
+                ajax.put("originalFilename", file.getOriginalFilename());
+                return ajax;
+            }
+            catch (Exception metadataError)
+            {
+                cleanupUploadedFiles(List.of(fileName));
+                throw metadataError;
+            }
         }
         catch (Exception e)
         {
@@ -146,10 +162,11 @@ public class CommonController
             {
                 // 通过 FileStorageService 上传
                 String fileName = fileStorageService.upload(filePath, file, MimeTypeUtils.DEFAULT_ALLOWED_EXTENSION);
+                fileNames.add(fileName);
+                recordAttachment(file, fileName, "COMMON_UPLOAD", null);
                 // MinIO 返回完整 HTTP URL，本地返回 /profile/... 相对路径
                 String url = fileName.startsWith("http") ? fileName : serverConfig.getUrl() + fileName;
                 urls.add(url);
-                fileNames.add(fileName);
                 newFileNames.add(FileUtils.getName(fileName));
                 originalFilenames.add(file.getOriginalFilename());
             }
@@ -198,6 +215,17 @@ public class CommonController
                 log.warn("Failed to clean up a file from an incomplete batch upload", cleanupError);
             }
         }
+        if (attachmentMapper != null && !fileNames.isEmpty())
+        {
+            try
+            {
+                attachmentMapper.deleteAttachmentByPaths(fileNames.toArray(new String[0]));
+            }
+            catch (Exception metadataCleanupError)
+            {
+                log.warn("Failed to clean up attachment metadata from an incomplete upload", metadataCleanupError);
+            }
+        }
     }
 
     /**
@@ -210,6 +238,7 @@ public class CommonController
     {
         try
         {
+            assertDownloadAuthorized(resource, false);
             if (!FileUtils.checkAllowDownload(resource))
             {
                 throw new Exception(StringUtils.format("资源文件({})非法，不允许下载。 ", resource));
@@ -224,6 +253,49 @@ public class CommonController
         catch (Exception e)
         {
             log.error("下载文件失败", e);
+        }
+    }
+
+    private void assertDownloadAuthorized(String filePath, boolean delete)
+    {
+        if (SecurityUtils.isAdmin())
+        {
+            return;
+        }
+        if (delete)
+        {
+            throw new org.springframework.security.access.AccessDeniedException("File deletion requires administrator permission");
+        }
+        if (attachmentMapper == null)
+        {
+            throw new org.springframework.security.access.AccessDeniedException("File ownership metadata is unavailable");
+        }
+        String username = SecurityUtils.getUsername();
+        if (attachmentMapper.selectAttachmentByPathAndOwner(filePath, username) == null)
+        {
+            throw new org.springframework.security.access.AccessDeniedException("File is not owned by current user");
+        }
+    }
+
+    private void recordAttachment(MultipartFile file, String filePath, String entityType, Long entityId)
+    {
+        if (attachmentMapper == null)
+        {
+            log.warn("Attachment metadata mapper is unavailable; file ownership was not recorded");
+            return;
+        }
+        SysAttachment attachment = new SysAttachment();
+        attachment.setFileName(file.getOriginalFilename());
+        attachment.setFilePath(filePath);
+        attachment.setFileSize(file.getSize());
+        attachment.setMimeType(file.getContentType());
+        attachment.setExtension(FileUploadUtils.getExtension(file));
+        attachment.setEntityType(entityType);
+        attachment.setEntityId(entityId);
+        attachment.setCreateBy(SecurityUtils.getUsername());
+        if (attachmentMapper.insertAttachment(attachment) != 1)
+        {
+            throw new IllegalStateException("Attachment metadata was not persisted");
         }
     }
 
@@ -243,6 +315,10 @@ public class CommonController
             boolean deleted = fileStorageService.delete(fileName);
             if (deleted)
             {
+                if (attachmentMapper != null)
+                {
+                    attachmentMapper.deleteAttachmentByPaths(new String[] { fileName });
+                }
                 return AjaxResult.success();
             }
             return AjaxResult.error("删除文件失败");

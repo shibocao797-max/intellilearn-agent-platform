@@ -16,6 +16,11 @@ public interface SysAttachmentMapper
     public SysAttachment selectAttachmentById(Long id);
 
     /**
+     * Query an attachment owned by the specified user.
+     */
+    public SysAttachment selectAttachmentByPathAndOwner(String filePath, String createBy);
+
+    /**
      * 查询附件列表
      */
     public List<SysAttachment> selectAttachmentList(SysAttachment attachment);
@@ -29,4 +34,9 @@ public interface SysAttachmentMapper
      * 批量删除附件
      */
     public int deleteAttachmentByIds(Long[] ids);
+
+    /**
+     * Delete attachment metadata for rolled-back file paths.
+     */
+    public int deleteAttachmentByPaths(String[] filePaths);
 }

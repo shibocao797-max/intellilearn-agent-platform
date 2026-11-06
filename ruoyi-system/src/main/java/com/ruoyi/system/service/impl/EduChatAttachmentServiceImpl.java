@@ -10,7 +10,12 @@ import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.io.MemoryUsageSetting;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -23,6 +28,11 @@ import java.util.*;
 public class EduChatAttachmentServiceImpl implements IEduChatAttachmentService {
     private static final long MAX_FILE_BYTES = 25L * 1024 * 1024;
     private static final int MAX_EXTRACTED_CHARS = 20000;
+    private static final int MAX_PDF_PAGES = 200;
+    private static final int MAX_OFFICE_ELEMENTS = 10000;
+    private static final int MAX_SPREADSHEET_CELLS = 100000;
+    private static final int MAX_PRESENTATION_SLIDES = 100;
+    private static final long MAX_ZIP_ENTRY_BYTES = 50L * 1024 * 1024;
     private static final String[] ALLOWED = {"txt","md","csv","json","java","py","js","ts","css","xml","sql","yaml","yml","docx","xlsx","pptx","pdf","jpg","jpeg","png","webp"};
     private static final Set<String> TEXT = Set.of("txt","md","csv","json","java","py","js","ts","css","xml","sql","yaml","yml");
     private static final Set<String> IMAGES = Set.of("jpg","jpeg","png","webp");
@@ -82,13 +92,47 @@ public class EduChatAttachmentServiceImpl implements IEduChatAttachmentService {
         result.put("status", a.getContentStatus()); result.put("errorMessage", a.getErrorMessage()); return result;
     }
     private Extraction extract(MultipartFile file, String ext) throws Exception {
+        configureOfficeZipLimits();
         if (IMAGES.contains(ext)) return new Extraction("READY_IMAGE", null, "Image stored; visual recognition is not enabled in the text model pipeline.");
         if (TEXT.contains(ext)) return new Extraction("READY", truncate(new String(file.getBytes(), StandardCharsets.UTF_8)), null);
-        if ("docx".equals(ext)) try (InputStream in=file.getInputStream(); XWPFDocument d=new XWPFDocument(in); XWPFWordExtractor e=new XWPFWordExtractor(d)) { return new Extraction("READY", truncate(e.getText()), null); }
-        if ("xlsx".equals(ext)) try (InputStream in=file.getInputStream(); XSSFWorkbook wb=new XSSFWorkbook(in)) { StringBuilder b=new StringBuilder(); wb.forEach(s -> s.forEach(r -> r.forEach(c -> b.append(c).append('\t')))); return new Extraction("READY", truncate(b.toString()), null); }
-        if ("pptx".equals(ext)) try (InputStream in=file.getInputStream(); XMLSlideShow p=new XMLSlideShow(in)) { StringBuilder b=new StringBuilder(); p.getSlides().forEach(s -> s.getShapes().forEach(shape -> { if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape t) b.append(t.getText()).append('\n'); })); return new Extraction("READY", truncate(b.toString()), null); }
-        if ("pdf".equals(ext)) try (InputStream in=file.getInputStream(); PDDocument document=PDDocument.load(in)) { return new Extraction("READY", truncate(new PDFTextStripper().getText(document)), null); }
+        if ("docx".equals(ext)) try (InputStream in=file.getInputStream(); XWPFDocument d=new XWPFDocument(in); XWPFWordExtractor e=new XWPFWordExtractor(d)) {
+            if (d.getBodyElements().size() > MAX_OFFICE_ELEMENTS) throw new ServiceException("Word document contains too many elements");
+            return new Extraction("READY", truncate(e.getText()), null);
+        }
+        if ("xlsx".equals(ext)) try (InputStream in=file.getInputStream(); XSSFWorkbook wb=new XSSFWorkbook(in)) {
+            StringBuilder b=new StringBuilder();
+            int cells = 0;
+            for (Sheet sheet : wb) {
+                if (sheet.getLastRowNum() > MAX_OFFICE_ELEMENTS) throw new ServiceException("Spreadsheet contains too many rows");
+                for (Row row : sheet) {
+                    for (Cell cell : row) {
+                        if (++cells > MAX_SPREADSHEET_CELLS) throw new ServiceException("Spreadsheet contains too many cells");
+                        b.append(cell).append('\t');
+                    }
+                }
+            }
+            return new Extraction("READY", truncate(b.toString()), null);
+        }
+        if ("pptx".equals(ext)) try (InputStream in=file.getInputStream(); XMLSlideShow p=new XMLSlideShow(in)) {
+            if (p.getSlides().size() > MAX_PRESENTATION_SLIDES) throw new ServiceException("Presentation contains too many slides");
+            StringBuilder b=new StringBuilder();
+            p.getSlides().forEach(s -> s.getShapes().forEach(shape -> {
+                if (shape instanceof org.apache.poi.xslf.usermodel.XSLFTextShape t) b.append(t.getText()).append('\n');
+            }));
+            return new Extraction("READY", truncate(b.toString()), null);
+        }
+        if ("pdf".equals(ext)) try (InputStream in=file.getInputStream();
+                                      PDDocument document=PDDocument.load(in, MemoryUsageSetting.setupMixed(32L * 1024 * 1024))) {
+            if (document.getNumberOfPages() > MAX_PDF_PAGES) throw new ServiceException("PDF contains too many pages");
+            return new Extraction("READY", truncate(new PDFTextStripper().getText(document)), null);
+        }
         return new Extraction("UNSUPPORTED", null, "This file type is stored but is not parsed by the current chat pipeline.");
+    }
+
+    private void configureOfficeZipLimits() {
+        ZipSecureFile.setMinInflateRatio(0.01d);
+        ZipSecureFile.setMaxEntrySize(MAX_ZIP_ENTRY_BYTES);
+        ZipSecureFile.setMaxTextSize(MAX_EXTRACTED_CHARS * 4L);
     }
     private void verifyFileSignature(MultipartFile file, String extension) {
         try (InputStream input = file.getInputStream()) {
