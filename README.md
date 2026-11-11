@@ -243,7 +243,7 @@ npm run dev
 mvn test
 ```
 
-CI 工作流 `.github/workflows/ci.yml` 会校验 SQL 清单和 Docker Compose 配置，执行 Maven 测试，并构建管理端与学生端。可单独构建前端：
+CI 工作流 `.github/workflows/ci.yml` 会校验 SQL 清单和 Docker Compose 配置，在临时 MySQL 8 容器中验证空库初始化、应用账号权限以及 12、14、17 号兼容迁移的旧表补列和重复执行，再执行 Maven 测试并构建管理端与学生端。数据库初始化验证仅操作可销毁的 CI 容器，不连接或修改外部数据库。可单独构建前端：
 
 ```powershell
 cd ruoyi-ui

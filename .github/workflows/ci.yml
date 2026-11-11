@@ -33,6 +33,9 @@ jobs:
           MINIO_ROOT_PASSWORD: ci-minio-password
         run: docker compose config --quiet
 
+      - name: Validate fresh MySQL initialization and compatibility migrations
+        run: bash scripts/ci/validate-mysql-init.sh
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
