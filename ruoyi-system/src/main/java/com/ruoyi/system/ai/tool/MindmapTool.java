@@ -3,6 +3,8 @@ package com.ruoyi.system.ai.tool;
 import com.ruoyi.system.domain.EduResource;
 import com.ruoyi.system.mapper.EduResourceMapper;
 import net.sourceforge.plantuml.SourceStringReader;
+import net.sourceforge.plantuml.security.SecurityUtils;
+import net.sourceforge.plantuml.security.SecurityProfile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.util.Base64;
+import java.util.regex.Pattern;
 
 /**
  * 思维导图工具 — PlantUML 服务端渲染为 PNG 图片
@@ -23,6 +26,13 @@ import java.util.Base64;
 public class MindmapTool {
 
     private static final Logger log = LoggerFactory.getLogger(MindmapTool.class);
+    private static final int MAX_SOURCE_LENGTH = 12000;
+    private static final int MAX_NODE_COUNT = 200;
+    private static final Pattern MINDMAP_NODE = Pattern.compile("\\*{1,4}\\s+[^\\r\\n]{1,160}");
+
+    static {
+        System.setProperty("PLANTUML_SECURITY_PROFILE", "SANDBOX");
+    }
 
     @Autowired
     private EduResourceMapper eduResourceMapper;
@@ -40,7 +50,17 @@ public class MindmapTool {
      */
     public Long renderAndSave(String title, String plantUmlCode, Long userId) {
         // 1. 从 LLM 输出中提取 @startmindmap...@endmindmap 代码块，容错处理多余文字
-        String extracted = extractPlantUml(plantUmlCode);
+        String extracted;
+        try {
+            if (SecurityUtils.getSecurityProfile() != SecurityProfile.SANDBOX) {
+                throw new IllegalStateException("PlantUML sandbox security profile is not active");
+            }
+            extracted = validatePlantUml(extractPlantUml(plantUmlCode));
+        } catch (RuntimeException e) {
+            log.warn("拒绝渲染不安全或无效的 PlantUML 输入: title={}, userId={}, reason={}",
+                    title, userId, e.getMessage());
+            return saveResource(title, plantUmlCode, null, "text", userId);
+        }
 
         // 2. 用 PlantUML 渲染 PNG 图片
         SourceStringReader reader = new SourceStringReader(extracted);
@@ -85,6 +105,44 @@ public class MindmapTool {
         // 如果没找到标记，可能是格式异常，尝试用原始文本渲染
         log.warn("LLM 输出中未找到 @startmindmap/@endmindmap 标记，使用原始文本");
         return raw;
+    }
+
+    static String validatePlantUml(String source) {
+        if (source == null || source.length() > MAX_SOURCE_LENGTH) {
+            throw new IllegalArgumentException("思维导图源码为空或超过长度限制");
+        }
+
+        String[] lines = source.strip().split("\\R");
+        if (lines.length < 3 || !"@startmindmap".equals(lines[0].trim())
+                || !"@endmindmap".equals(lines[lines.length - 1].trim())) {
+            throw new IllegalArgumentException("思维导图格式无效");
+        }
+
+        int nodeCount = 0;
+        int previousDepth = 0;
+        for (int index = 1; index < lines.length - 1; index++) {
+            String line = lines[index].trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            if (!MINDMAP_NODE.matcher(line).matches()) {
+                throw new IllegalArgumentException("仅支持思维导图节点文本，不允许 PlantUML 指令");
+            }
+
+            int depth = 0;
+            while (depth < line.length() && line.charAt(depth) == '*') {
+                depth++;
+            }
+            if (++nodeCount > MAX_NODE_COUNT || (nodeCount == 1 && depth != 1)
+                    || (nodeCount > 1 && (depth == 1 || depth > previousDepth + 1))) {
+                throw new IllegalArgumentException("思维导图节点数量或层级无效");
+            }
+            previousDepth = depth;
+        }
+        if (nodeCount == 0) {
+            throw new IllegalArgumentException("思维导图至少需要一个节点");
+        }
+        return String.join("\n", lines);
     }
 
     /**

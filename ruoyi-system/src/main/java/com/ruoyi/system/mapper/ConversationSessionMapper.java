@@ -17,6 +17,9 @@ public interface ConversationSessionMapper
 
     List<Map<String, Object>> selectSessionsByUser(Long userId);
 
+    int existsByUserAndSession(@Param("userId") Long userId,
+                               @Param("sessionId") String sessionId);
+
     int deleteByUserAndSession(@Param("userId") Long userId,
                                @Param("sessionId") String sessionId);
 }

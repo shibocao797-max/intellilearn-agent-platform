@@ -9,6 +9,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD before starting Compose}"
       MYSQL_DATABASE: "${MYSQL_DATABASE:-ry-vue}"
+      MYSQL_USER: "${MYSQL_USER:?Set MYSQL_USER before starting Compose}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?Set MYSQL_PASSWORD before starting Compose}"
       MYSQL_CHARSET: utf8mb4
       TZ: Asia/Shanghai
     volumes:

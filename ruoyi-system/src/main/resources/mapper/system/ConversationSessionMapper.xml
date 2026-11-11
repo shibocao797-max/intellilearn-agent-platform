@@ -90,6 +90,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by lastActiveTime desc, sessionId desc
     </select>
 
+    <select id="existsByUserAndSession" resultType="int">
+        select count(1)
+        from conversation_session
+        where user_id = #{userId}
+          and session_id = #{sessionId}
+    </select>
+
     <delete id="deleteByUserAndSession">
         delete from conversation_session
         where user_id = #{userId}

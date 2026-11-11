@@ -49,6 +49,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by create_time asc
     </select>
 
+    <select id="existsByUserAndSession" resultType="int">
+        select count(1)
+        from conversation_history
+        where user_id = #{userId}
+          and session_id = #{sessionId}
+    </select>
+
     <!-- 聚合查询用户的所有会话列表（按最后活跃时间降序） -->
     <select id="selectSessionsByUser" parameterType="Long" resultType="java.util.Map">
         select

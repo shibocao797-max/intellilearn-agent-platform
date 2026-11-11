@@ -158,6 +158,11 @@ public class FileUploadUtils
     public static final File getAbsoluteFile(String uploadDir, String fileName) throws IOException
     {
         File root = resolveUploadRoot(uploadDir);
+        File profile = new File(RuoYiConfig.getProfile()).getCanonicalFile();
+        if (!root.toPath().startsWith(profile.toPath()))
+        {
+            throw new IOException("上传目录必须位于配置的文件根目录内");
+        }
         File desc = new File(root, fileName).getCanonicalFile();
         Path rootPath = root.toPath();
         if (!desc.toPath().startsWith(rootPath))

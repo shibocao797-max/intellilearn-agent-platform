@@ -1,4 +1,4 @@
-import { request, requestText, streamRequest } from '@/services/http'
+import { request, requestBlob, requestText, streamRequest } from '@/services/http'
 
 export const authApi = {
   captcha: () => request('/captchaImage', { auth: false }),
@@ -22,6 +22,7 @@ export const eduApi = {
   taskEvents: (taskId, afterSeq = 0) => request(`/edu/ai/tasks/${encodeURIComponent(taskId)}/events`, { params: { afterSeq } }),
   cancelTask: taskId => request(`/edu/ai/tasks/${encodeURIComponent(taskId)}/cancel`, { method: 'POST' }),
   uploadChatAttachment: (data, options = {}) => request('/edu/ai/attachments', { method: 'POST', data, ...options }),
+  downloadChatAttachment: attachmentId => requestBlob(`/edu/ai/attachments/${encodeURIComponent(attachmentId)}/download`),
   deleteChatAttachment: attachmentId => request(`/edu/ai/attachments/${encodeURIComponent(attachmentId)}`, { method: 'DELETE' }),
   transcribeSpeech: (data, options = {}) => request('/edu/ai/speech/transcribe', { method: 'POST', data, ...options }),
   sessions: () => request('/edu/ai/sessions'),

@@ -27,6 +27,8 @@ jobs:
       - name: Validate Compose configuration
         env:
           MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_USER: ci-app
+          MYSQL_PASSWORD: ci-app-password
           MINIO_ROOT_USER: ci-minio
           MINIO_ROOT_PASSWORD: ci-minio-password
         run: docker compose config --quiet

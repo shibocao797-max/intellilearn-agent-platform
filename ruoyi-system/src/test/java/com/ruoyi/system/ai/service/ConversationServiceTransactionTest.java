@@ -106,6 +106,7 @@ public final class ConversationServiceTransactionTest
     {
         @Override public int insertHistory(ConversationHistory history) { return 1; }
         @Override public List<ConversationHistory> selectBySession(Long userId, String sessionId) { return List.of(); }
+        @Override public int existsByUserAndSession(Long userId, String sessionId) { return 0; }
         @Override public List<Map<String, Object>> selectSessionsByUser(Long userId) { return List.of(); }
         @Override public List<ConversationHistory> selectRecentByUser(Long userId, int limit) { return List.of(); }
         @Override public int softDeleteSession(Long userId, String sessionId) { return 0; }
@@ -116,6 +117,7 @@ public final class ConversationServiceTransactionTest
         @Override public int insertIfAbsent(ConversationSession session) { return 1; }
         @Override public int updateAfterMessage(Long userId, String sessionId, String role, String content) { return 1; }
         @Override public List<Map<String, Object>> selectSessionsByUser(Long userId) { return List.of(); }
+        @Override public int existsByUserAndSession(Long userId, String sessionId) { return 0; }
         @Override public int deleteByUserAndSession(Long userId, String sessionId) { return 0; }
     }
 }

@@ -4,8 +4,12 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import jakarta.servlet.http.HttpServletResponse;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -51,6 +55,7 @@ public class MinioFileStorageServiceImpl implements FileStorageService
         this.endpoint = endpoint;
         this.bucket = bucket;
         this.publicReadPrefix = normalizePath(publicReadPrefix, "ai-generated");
+        assertPublicPrefixDoesNotExposePrivateAttachments(this.publicReadPrefix);
         this.minioClient = MinioClient.builder()
                 .endpoint(endpoint)
                 .credentials(accessKey, secretKey)
@@ -78,9 +83,9 @@ public class MinioFileStorageServiceImpl implements FileStorageService
             }
             // 仅开放 AI 生成媒体前缀，聊天附件不得通过匿名 URL 读取。
             // 其余对象默认保持私有，避免把整个用户资源桶暴露到公网。
-            String policy = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::" + bucket + "/" + publicReadPrefix + "/*\"]}]}";
             minioClient.setBucketPolicy(
-                SetBucketPolicyArgs.builder().bucket(bucket).config(policy).build());
+                SetBucketPolicyArgs.builder().bucket(bucket)
+                    .config(buildBucketPolicy(bucket, publicReadPrefix)).build());
         }
         catch (Exception e)
         {
@@ -130,6 +135,34 @@ public class MinioFileStorageServiceImpl implements FileStorageService
 
         // 返回完整 HTTP URL
         return endpoint + "/" + bucket + "/" + objectName;
+    }
+
+    static String buildBucketPolicy(String bucket, String publicReadPrefix)
+    {
+        String normalizedPublicPrefix = normalizePath(publicReadPrefix, "ai-generated");
+        assertPublicPrefixDoesNotExposePrivateAttachments(normalizedPublicPrefix);
+        JSONArray statements = new JSONArray();
+        statements.add(new JSONObject(Map.of(
+                "Effect", "Allow",
+                "Principal", Map.of("AWS", List.of("*")),
+                "Action", List.of("s3:GetObject"),
+                "Resource", List.of("arn:aws:s3:::" + bucket + "/" + normalizedPublicPrefix + "/*"))));
+
+        JSONObject policy = new JSONObject();
+        policy.put("Version", "2012-10-17");
+        policy.put("Statement", statements);
+        return policy.toJSONString();
+    }
+
+    private static void assertPublicPrefixDoesNotExposePrivateAttachments(String publicPrefix)
+    {
+        String privatePrefix = "edu-chat/private";
+        if ("edu-chat".equals(publicPrefix) || privatePrefix.equals(publicPrefix)
+                || publicPrefix.startsWith(privatePrefix + "/"))
+        {
+            throw new IllegalArgumentException(
+                    "MinIO public-read-prefix must not expose private chat attachments");
+        }
     }
 
     @Override
@@ -261,7 +294,7 @@ public class MinioFileStorageServiceImpl implements FileStorageService
         return DateUtils.datePath() + "/" + IdUtils.fastSimpleUUID() + "." + extension;
     }
 
-    private String normalizePath(String value, String fallback)
+    private static String normalizePath(String value, String fallback)
     {
         String path = value == null || value.isBlank() ? fallback : value.trim();
         path = path.replace("\\", "/");

@@ -98,6 +98,28 @@ export async function requestText(path, options = {}) {
   return text
 }
 
+export async function requestBlob(path, options = {}) {
+  const headers = { ...(options.headers || {}) }
+  const token = getToken()
+  if (options.auth !== false && token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  const response = await fetch(buildUrl(path, options.params), {
+    method: options.method || 'GET',
+    headers,
+    signal: options.signal
+  })
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || ''
+    const payload = contentType.includes('application/json')
+      ? await response.json().catch(() => ({}))
+      : await response.text()
+    if (response.status === 401) redirectToLogin()
+    throw new Error(normalizeError(payload, `接口请求失败: ${response.status}`))
+  }
+  return response.blob()
+}
+
 export function streamRequest(path, data, handlers = {}) {
   const controller = new AbortController()
   const headers = { 'Content-Type': 'application/json;charset=utf-8' }

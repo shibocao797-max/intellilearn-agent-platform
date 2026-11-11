@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS quiz_practice_item (
     session_id varchar(64) NOT NULL,
     user_id bigint NOT NULL,
     question_id bigint NOT NULL,
+    question_snapshot_json MEDIUMTEXT DEFAULT NULL,
     position_index int NOT NULL,
     state varchar(20) NOT NULL COMMENT 'UNANSWERED, DRAFT, SUBMITTED',
     draft_answer text DEFAULT NULL,

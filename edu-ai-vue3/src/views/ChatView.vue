@@ -25,6 +25,17 @@
                   <span class="material-symbols-outlined">{{ attachmentIcon(attachment) }}</span>
                   <span>{{ attachment.name }}</span>
                   <small>{{ formatAttachmentSize(attachment.size) }}</small>
+                  <button
+                    v-if="attachment.attachmentId"
+                    class="attachment-download"
+                    type="button"
+                    :disabled="downloadingAttachmentIds.has(String(attachment.attachmentId))"
+                    :aria-label="`下载附件：${attachment.name}`"
+                    :title="downloadingAttachmentIds.has(String(attachment.attachmentId)) ? '正在下载' : '下载附件'"
+                    @click="downloadMessageAttachment(attachment)"
+                  >
+                    <span class="material-symbols-outlined">{{ downloadingAttachmentIds.has(String(attachment.attachmentId)) ? 'progress_activity' : 'download' }}</span>
+                  </button>
                 </div>
               </div>
               <div v-if="visibleMessageResources(message).length" class="embedded-resources">
@@ -494,6 +505,7 @@ const chatScrollRef = ref(null)
 const followOutput = ref(true)
 const attachmentInputRef = ref(null)
 const attachments = ref([])
+const downloadingAttachmentIds = ref(new Set())
 const traceTriggerRef = ref(null)
 const tracePanelRef = ref(null)
 const resourcePreviewPanelRef = ref(null)
@@ -1062,6 +1074,30 @@ function normalizeMessageAttachment(attachment) {
     name: attachment.name || attachment.fileName || '附件',
     size: Number(attachment.size ?? attachment.fileSize ?? 0),
     type: attachment.type || attachment.contentType || ''
+  }
+}
+
+async function downloadMessageAttachment(attachment) {
+  const attachmentId = attachment?.attachmentId ?? attachment?.id
+  if (attachmentId === undefined || attachmentId === null) return
+  const key = String(attachmentId)
+  if (downloadingAttachmentIds.value.has(key)) return
+
+  downloadingAttachmentIds.value = new Set([...downloadingAttachmentIds.value, key])
+  try {
+    const blob = await eduApi.downloadChatAttachment(attachmentId)
+    const objectUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = attachment.name || 'attachment'
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+  } catch (error) {
+    window.alert(error?.message || '附件下载失败，请稍后重试。')
+  } finally {
+    const next = new Set(downloadingAttachmentIds.value)
+    next.delete(key)
+    downloadingAttachmentIds.value = next
   }
 }
 
@@ -2228,7 +2264,7 @@ onBeforeUnmount(() => {
 .message-attachment {
   max-width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
@@ -2253,6 +2289,27 @@ onBeforeUnmount(() => {
 
 .message-attachment small {
   opacity: 0.8;
+}
+
+.attachment-download {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.attachment-download .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.attachment-download:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .embedded-resources {

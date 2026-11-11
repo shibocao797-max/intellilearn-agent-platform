@@ -4,6 +4,8 @@ import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.common.utils.file.FileStorageService;
 import com.ruoyi.system.domain.EduChatAttachment;
 import com.ruoyi.system.mapper.EduChatAttachmentMapper;
+import com.ruoyi.system.mapper.ConversationHistoryMapper;
+import com.ruoyi.system.mapper.ConversationSessionMapper;
 import com.ruoyi.system.service.IEduChatAttachmentService;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
@@ -18,6 +20,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.io.MemoryUsageSetting;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.InputStream;
@@ -26,6 +30,7 @@ import java.util.*;
 
 @Service
 public class EduChatAttachmentServiceImpl implements IEduChatAttachmentService {
+    private static final Logger log = LoggerFactory.getLogger(EduChatAttachmentServiceImpl.class);
     private static final long MAX_FILE_BYTES = 25L * 1024 * 1024;
     private static final int MAX_EXTRACTED_CHARS = 20000;
     private static final int MAX_PDF_PAGES = 200;
@@ -38,26 +43,53 @@ public class EduChatAttachmentServiceImpl implements IEduChatAttachmentService {
     private static final Set<String> IMAGES = Set.of("jpg","jpeg","png","webp");
     @Autowired private FileStorageService fileStorageService;
     @Autowired private EduChatAttachmentMapper attachmentMapper;
+    @Autowired private ConversationSessionMapper sessionMapper;
+    @Autowired private ConversationHistoryMapper historyMapper;
 
     @Override public EduChatAttachment upload(Long userId, String sessionId, MultipartFile file) {
         if (sessionId == null || sessionId.isBlank()) throw new ServiceException("sessionId cannot be empty");
+        if (userId == null) throw new ServiceException("userId cannot be empty");
+        String normalizedSessionId = sessionId.trim();
+        if (normalizedSessionId.length() > 64
+                || (sessionMapper.existsByUserAndSession(userId, normalizedSessionId) == 0
+                    && historyMapper.existsByUserAndSession(userId, normalizedSessionId) == 0)) {
+            throw new ServiceException("Conversation session not found");
+        }
         if (file == null || file.isEmpty()) throw new ServiceException("file cannot be empty");
         if (file.getSize() > MAX_FILE_BYTES) throw new ServiceException("Attachment exceeds 25MB limit");
         String extension = FilenameUtils.getExtension(Objects.requireNonNullElse(file.getOriginalFilename(), "")).toLowerCase(Locale.ROOT);
         if (!Arrays.asList(ALLOWED).contains(extension)) throw new ServiceException("Unsupported attachment type: " + extension);
         verifyFileSignature(file, extension);
         EduChatAttachment attachment = new EduChatAttachment();
-        attachment.setUserId(userId); attachment.setSessionId(sessionId);
+        attachment.setUserId(userId); attachment.setSessionId(normalizedSessionId);
         attachment.setOriginalName(safeName(file.getOriginalFilename())); attachment.setFileSize(file.getSize());
         attachment.setMimeType(Objects.requireNonNullElse(file.getContentType(), "application/octet-stream")); attachment.setExtension(extension);
+        String storagePath = null;
         try {
             Extraction extracted = extract(file, extension);
             attachment.setContentStatus(extracted.status); attachment.setExtractedText(extracted.text); attachment.setErrorMessage(extracted.error);
-            attachment.setStoragePath(fileStorageService.upload("edu-chat/" + userId + "/" + sessionId, file, ALLOWED, true));
-            attachmentMapper.insert(attachment);
+            storagePath = fileStorageService.upload(
+                    "edu-chat/private/" + userId + "/" + UUID.randomUUID(), file, ALLOWED, true);
+            attachment.setStoragePath(storagePath);
+            if (attachmentMapper.insert(attachment) != 1) {
+                throw new IllegalStateException("Attachment metadata was not persisted");
+            }
             return attachment;
-        } catch (ServiceException e) { throw e;
-        } catch (Exception e) { throw new ServiceException("Attachment upload failed: " + e.getMessage()); }
+        } catch (Exception e) {
+            if (storagePath != null) {
+                try {
+                    if (!fileStorageService.delete(storagePath)) {
+                        log.warn("Could not clean up an attachment after metadata persistence failed");
+                    }
+                } catch (Exception cleanupError) {
+                    log.warn("Could not clean up an attachment after metadata persistence failed", cleanupError);
+                }
+            }
+            if (e instanceof ServiceException serviceException) {
+                throw serviceException;
+            }
+            throw new ServiceException("Attachment upload failed: " + e.getMessage());
+        }
     }
     @Override public EduChatAttachment getOwned(Long userId, Long attachmentId) {
         EduChatAttachment attachment = attachmentMapper.selectByIdAndUserId(attachmentId, userId);

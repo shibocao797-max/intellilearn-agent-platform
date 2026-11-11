@@ -64,6 +64,7 @@ tmp_*.docx
 **/coverage/
 
 # Local secrets
+.env
 config/local-secrets.yml
 ruoyi-admin/config/local-secrets.yml
 

@@ -110,6 +110,8 @@ AI 请求的主要业务实现位于 `ruoyi-system` 的 `ai/graph`、`ai/agent`�
 
 ```powershell
 $env:MYSQL_ROOT_PASSWORD = "替换为本地强密码"
+$env:MYSQL_USER = "edu_app"
+$env:MYSQL_PASSWORD = "替换为应用专用强密码"
 $env:MINIO_ROOT_USER = "minio"
 $env:MINIO_ROOT_PASSWORD = "替换为本地强密码"
 docker compose up -d
@@ -132,7 +134,7 @@ Compose 暴露的本机端口：
 Copy-Item config/local-secrets.example.yml config/local-secrets.yml
 ```
 
-编辑 `config/local-secrets.yml`，至少替换 JWT 密钥、数据库密码和模型 API Key。数据库密码须与启动 Compose 时的 `MYSQL_ROOT_PASSWORD` 一致。图像、视频、语音等外部服务按需配置；不使用 MinIO 时保留 `file-storage.type: local`。
+编辑 `config/local-secrets.yml`，至少替换 JWT 密钥、数据库应用账号密码和模型 API Key。数据库账号密码须与启动 Compose 时的 `MYSQL_USER`、`MYSQL_PASSWORD` 一致；后端使用仅对 `ry-vue` 库授权的 `edu_app` 账号，不使用 MySQL root 账号。图像、视频、语音等外部服务按需配置；不使用 MinIO 时保留 `file-storage.type: local`。
 
 敏感配置文件已加入 `.gitignore`，不要将真实密码或 API Key 提交到 Git。
 
@@ -178,7 +180,7 @@ npm run dev
 | 应用配置 | `ruoyi-admin/src/main/resources/application.yml` | 服务端口、Redis、AI、文件存储等 |
 | 数据源配置 | `ruoyi-admin/src/main/resources/application-druid.yml` | MySQL URL、用户名和密码 |
 | 本地密钥 | `config/local-secrets.yml` | 从 `config/local-secrets.example.yml` 复制；不要提交 |
-| MySQL | `MYSQL_URL`、`MYSQL_USERNAME`、`MYSQL_PASSWORD` | 默认连接 `localhost:3308/ry-vue` |
+| MySQL | `MYSQL_URL`、`MYSQL_USERNAME`、`MYSQL_PASSWORD` | 默认连接 `localhost:3308/ry-vue`；Compose 创建 `MYSQL_USER` 应用账号 |
 | 模型服务 | `AGNES_TEXT_BASE_URL`、`AGNES_TEXT_API_KEY`、`AGNES_TEXT_MODEL_NAME` | 文本模型及 OpenAI 兼容 API |
 | 文件存储 | `FILE_STORAGE_TYPE` | `local` 或 `minio` |
 | MinIO | `MINIO_ENDPOINT`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`、`MINIO_BUCKET` | `FILE_STORAGE_TYPE=minio` 时使用 |

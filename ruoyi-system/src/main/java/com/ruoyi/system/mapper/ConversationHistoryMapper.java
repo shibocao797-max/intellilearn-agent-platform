@@ -30,6 +30,8 @@ public interface ConversationHistoryMapper
      */
     public List<ConversationHistory> selectBySession(Long userId, String sessionId);
 
+    public int existsByUserAndSession(Long userId, String sessionId);
+
     /**
      * 查询用户的所有会话列表（聚合：session_id + 最后活跃时间 + 消息数 + 摘要）
      *
